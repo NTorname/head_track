@@ -6,17 +6,18 @@
 
 import rospy, cv2.aruco, numpy, cv2, sys, time, math, tf, sensor_msgs.msg, geometry_msgs.msg
 from cv_bridge import CvBridge
+from std_msgs.msg import Header as HeaderMsg
 
 
 #define tag
 id_to_find = 1
-# marker_size = 7
-marker_size = 10 #m -- we dividde by 100 later for accuracy and speed
+marker_size = 10 #m
 
 
 #initalize these values here (will be in init)
 tvec = [0,0,0]
 q = [0,0,0,1]
+pose_arr = []
 
 #get camera calibration
 
@@ -40,16 +41,16 @@ bridge = CvBridge()
 
 #TODO set up image publisher
 pubIm = rospy.Publisher("/detected_frame", sensor_msgs.msg.Image, queue_size=10)
-pubPose = rospy.Publisher("/head_pose", geometry_msgs.msg.Pose, queue_size=10)
+pubPose = rospy.Publisher("/head_pose", geometry_msgs.msg.PoseStamped, queue_size=10)
 
-pose = geometry_msgs.msg.Pose()
+pose = geometry_msgs.msg.PoseStamped()
 
 
 def callback(rawFrame): #gets frame from realsense
 	# global temporarily -- make a class later
 	global tvec
-	global q
-	
+	global q, pos_arr
+
 	#capture video camera frame
 	#cap = bridge.imgmsg_to_cv2(rawFrame, "bgr8") #desired_encoding='passthrough')
 	frame = bridge.imgmsg_to_cv2(rawFrame, "bgr8")
@@ -83,20 +84,28 @@ def callback(rawFrame): #gets frame from realsense
 
 		#assemble pose message
 		#rospy.logwarn("rvec: %f %f %f\ntvec %d %d %d\n", rvec[0], rvec[1], rvec[2], tvec[0], tvec[1], tvec[2])
-		q = tf.transformations.quaternion_from_euler(rvec[0], -rvec[2], rvec[1]) # the rotation was wierd so we sawp y and z and make y negative
-
-		
-		pose.position.x = tvec[0]
-		pose.position.y = tvec[1]
-		pose.position.z = tvec[2]
-		pose.orientation.x = q[0]
-		pose.orientation.y = q[1]
-		pose.orientation.z = q[2]
-		pose.orientation.w = q[3]
+		q = tf.transformations.quaternion_from_euler(rvec[0], -rvec[2], rvec[1])
 
 		tvec[0] = tvec[0]/100
 		tvec[1] = tvec[1]/100
 		tvec[2] = tvec[2]/100
+
+		header = HeaderMsg()
+		header.frame_id = '/camera_link'
+		header.stamp = rospy.Time.now()
+		pose.header = header
+
+		pose.pose.position.x = tvec[0]
+		pose.pose.position.y = tvec[1]
+		pose.pose.position.z = tvec[2]
+		pose.pose.orientation.x = q[0]
+		pose.pose.orientation.y = q[1]
+		pose.pose.orientation.z = q[2]
+		pose.pose.orientation.w = q[3]
+
+		# np.append(pose_arr, pose)
+		# pos_arr = pos_arr[:-10]
+
 
 	#Added by sam
 	#publish tf frame that matches pose
