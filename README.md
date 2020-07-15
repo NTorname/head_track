@@ -1,6 +1,7 @@
 <h1>head_track</h1>
 
-this ends up in your ros workspace
+1 this ends up in your ros workspace
+2 tape aruco marker to your head
 
 <h2>things to do</h2>
 
