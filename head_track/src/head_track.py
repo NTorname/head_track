@@ -38,15 +38,8 @@ pose = geometry_msgs.msg.Pose()
 
 def callback(rawFrame): #gets frame from realsense
 	#capture video camera frame
-	#cap = bridge.imgmsg_to_cv2(rawFrame, "bgr8") #desired_encoding='passthrough')
 	frame = bridge.imgmsg_to_cv2(rawFrame, "bgr8")
-	#set camera size
-	#cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-	#cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-
-	#read camera frame
-	#ret, frame = cap.read()
-
+	
 	#grayscale
 	gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
@@ -69,7 +62,6 @@ def callback(rawFrame): #gets frame from realsense
 		cv2.aruco.drawAxis(frame, camera_matrix, camera_distortion, rvec, tvec, 10)
 
 		#assemble pose message
-		#rospy.logwarn("rvec: %f %f %f\ntvec %d %d %d\n", rvec[0], rvec[1], rvec[2], tvec[0], tvec[1], tvec[2])
 		q = tf.transformations.quaternion_from_euler(rvec[0], rvec[1], rvec[2])
 		
 		pose.position.x = tvec[0]
@@ -82,7 +74,6 @@ def callback(rawFrame): #gets frame from realsense
 
 	pubIm.publish(bridge.cv2_to_imgmsg(frame, encoding="passthrough"))
 	pubPose.publish(pose)
-	#cv2.imshow("Image window", frame)
 
 
 def head_track():
