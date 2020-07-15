@@ -10,11 +10,19 @@ from cv_bridge import CvBridge
 
 #define tag
 id_to_find = 1
-marker_size = 7 #m
+# marker_size = 7
+marker_size = 10 #m -- we dividde by 100 later for accuracy and speed
+
+
+#initalize these values here (will be in init)
+tvec = [0,0,0]
+q = [0,0,0,1]
 
 #get camera calibration
-calib_path = "../calibration/"
-camera_matrix = numpy.loadtxt(calib_path+'cameraMatrix.txt', delimiter=',')
+
+
+calib_path = '/home/csrobot/catkin_ws/src/head_track/calibration/'
+camera_matrix = numpy.loadtxt(calib_path + 'cameraMatrix.txt', delimiter=',')
 camera_distortion = numpy.loadtxt(calib_path+'cameraDistortion.txt', delimiter=',')
 
 #180 degree matrix rotation around x axis   may not be necessary for this application
@@ -30,6 +38,7 @@ parameters = cv2.aruco.DetectorParameters_create()
 #set up link between ros topics and opencv
 bridge = CvBridge()
 
+#TODO set up image publisher
 pubIm = rospy.Publisher("/detected_frame", sensor_msgs.msg.Image, queue_size=10)
 pubPose = rospy.Publisher("/head_pose", geometry_msgs.msg.Pose, queue_size=10)
 
@@ -37,9 +46,20 @@ pose = geometry_msgs.msg.Pose()
 
 
 def callback(rawFrame): #gets frame from realsense
-	#capture video camera frame
-	frame = bridge.imgmsg_to_cv2(rawFrame, "bgr8")
+	# global temporarily -- make a class later
+	global tvec
+	global q
 	
+	#capture video camera frame
+	#cap = bridge.imgmsg_to_cv2(rawFrame, "bgr8") #desired_encoding='passthrough')
+	frame = bridge.imgmsg_to_cv2(rawFrame, "bgr8")
+	#set camera size
+	#cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+	#cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
+	#read camera frame
+	#ret, frame = cap.read()
+
 	#grayscale
 	gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
@@ -62,7 +82,9 @@ def callback(rawFrame): #gets frame from realsense
 		cv2.aruco.drawAxis(frame, camera_matrix, camera_distortion, rvec, tvec, 10)
 
 		#assemble pose message
-		q = tf.transformations.quaternion_from_euler(rvec[0], rvec[1], rvec[2])
+		#rospy.logwarn("rvec: %f %f %f\ntvec %d %d %d\n", rvec[0], rvec[1], rvec[2], tvec[0], tvec[1], tvec[2])
+		q = tf.transformations.quaternion_from_euler(rvec[0], -rvec[2], rvec[1]) # the rotation was wierd so we sawp y and z and make y negative
+
 		
 		pose.position.x = tvec[0]
 		pose.position.y = tvec[1]
@@ -72,8 +94,22 @@ def callback(rawFrame): #gets frame from realsense
 		pose.orientation.z = q[2]
 		pose.orientation.w = q[3]
 
+		tvec[0] = tvec[0]/100
+		tvec[1] = tvec[1]/100
+		tvec[2] = tvec[2]/100
+
+	#Added by sam
+	#publish tf frame that matches pose
+	br = tf.TransformBroadcaster()
+	br.sendTransform(tvec, q, rospy.Time.now(), "/laser_origin", "/camera_link")
+
+	#not being used atm
+	#display frame TODO rviz this
 	pubIm.publish(bridge.cv2_to_imgmsg(frame, encoding="passthrough"))
 	pubPose.publish(pose)
+	#cv2.imshow("Image window", frame)
+
+	
 
 
 def head_track():
