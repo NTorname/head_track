@@ -2,6 +2,11 @@
 
 this ends up in your ros workspace
 
+<h2>things to do</h2>
+
+you should really add your own calibration files to the calibration folder I just slapped realsense d400 series calibration in there cause its for mine
+
+<br />
 
 
 thanks for coming to my ted talk
