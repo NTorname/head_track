@@ -2,6 +2,7 @@
 # python
 import time
 import copy
+import array
 
 # ros
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
@@ -39,6 +40,77 @@ def reject_outliers(dataIn, factor=0.8):
     return dataOut
 
 
+def mul_quaternion(quaternion_1, quaternion_0):
+    a, b, c, d = quaternion_0
+    e, f, g, h = quaternion_1
+    coeff_1 = a * e - b * f - c * g - d * h
+    coeff_i = a * f + b * e + c * h - d * g
+    coeff_j = a * g - b * h + c * e + d * f
+    coeff_k = a * h + b * g - c * f + d * e
+    result = [coeff_1, coeff_i, coeff_j, coeff_k]
+    return result
+
+
+def quatWAvgMarkley(Q, weights=None):
+    # Averaging Quaternions.
+    # Arguments:
+    #     Q(ndarray): an Mx4 ndarray of quaternions.
+    #     weights(list): an M elements list, a weight for each quaternion.
+    if weights is None:
+        weights = []
+        i = 0
+        while i < Q.shape[0]:
+            weights.append(1)
+            i += 1
+    # Form the symmetric accumulator matrix
+    A = np.zeros((4, 4))
+    M = Q.shape[0]
+    wSum = 0
+    for i in range(M):
+        q = Q[i, :]
+        w_i = weights[i]
+        A += w_i * (np.outer(q, q))  # rank 1 update
+        wSum += w_i
+    # scale
+    A /= wSum
+    # Get the eigenvector corresponding to largest eigen value
+    return np.linalg.eigh(A)[1][:, -1]
+
+
+def quaternion_median(Q, axis=3):
+    #q_list = Q[:,3]
+    sorted_arr = Q[Q[:,axis].argsort()]
+    #print 'sorted q_list: ', sorted_arr
+    return sorted_arr[len(Q)/2]
+
+
+def reject_quaternion_outliers(q_list, factor, axis=3):
+    q_list = np.array(q_list)
+    # check for outliers along w - rem any outliers we can from that information
+    factor = factor
+    out_list = q_list[:, axis]
+    quant3, quant1 = np.percentile(out_list, [75, 25])
+    iqr = quant3 - quant1
+    iqrSigma = iqr / 1.34896
+    medData = np.median(out_list)
+    i = 0
+    indices_rem = []
+    while i < len(out_list):
+        if medData - factor * iqrSigma < out_list[i] < medData + factor * iqrSigma:
+            indices_rem.append(i)
+        i += 1
+
+    q_list_filtered = q_list[indices_rem]
+    if len(q_list_filtered) < 1:
+        # print 'REMOVED ALL'
+        return None
+    else:
+        # print 'len of q_list_filtered: ', len(q_list_filtered)
+        # print 'REMOVED: ', (len(q_list) - len(q_list_filtered))
+        print str(len(q_list_filtered)) + '/' + str(len(q_list))
+        return np.array(q_list_filtered)
+
+
 class HeadTracker:
     def __init__(self, marker_size, camera_matrix, camera_distortion):
         rospy.init_node('head_tracker', anonymous=True)
@@ -72,10 +144,10 @@ class HeadTracker:
         # larger number means smoother motion, but trails behind longer
         self.n_avg_marker = 10
         self.marker_arr = []
-        def_eul = [0,0,0]
+        def_quat = [0, 0, 0, 1]
         i = 0
         while i < self.n_avg_marker:
-            self.marker_arr.insert(i, def_eul)
+            self.marker_arr.insert(i, def_quat)
             i += 1
 
         # number of previous poses we average with
@@ -99,13 +171,15 @@ class HeadTracker:
             self.pose_arr.insert(i, def_pose)
             i += 1
 
+        # TODO: check if these are used anywhere
         self.last_tvec = [0, 0, 0]
         self.last_q = [0, 0, 0, 1]
 
         self.t1_4 = 0
 
-        self.outMarker = def_eul
+        self.outMarker = def_quat
         self.outPose = geometry_msgs.msg.PoseStamped()
+        self.final_pose = def_pose
 
     def callback(self, rawFrame):
         # capture video camera frame
@@ -119,16 +193,14 @@ class HeadTracker:
                                                          cameraMatrix=self.camera_matrix,
                                                          distCoeff=self.camera_distortion)
         t8 = time.time()
+
         # used for averaging
-        e_list_x = []
-        e_list_y = []
-        e_list_z = []
+        q_list = []
         tvec_list_x = []
         tvec_list_y = []
         tvec_list_z = []
 
         t1 = time.time()
-
         # if markers were found
         if ids is not None:
             # loop through markers
@@ -147,79 +219,76 @@ class HeadTracker:
                 #           (essentially mine is RYP instead of RPY)          #
                 # ----------------------------------------------------------- #
                 # TODO switch y and z axes for scooter implementation
+                # I used https://www.andre-gaschler.com/rotationconverter/ to get quaternion rot values
                 current_id = ids[i]
                 if current_id == self.id_back:
-                    # adjust angle 90 degrees ccw on yaw
+                    # adjust angle 90 degrees ccw
+                    q_rot = [0, -.7071068, 0, 0.7071068]
+                    q = aa2quat((rvec[0][0]))
+                    q = mul_quaternion(q, q_rot)
                     # move forward 8.28cm
-                    q = aa2quat(rvec[0][0])
-                    e = euler_from_quaternion(q)
-                    e = [e[0], e[1] - np.pi / 2, e[2]]
                     tvec = tvec[0][0]
                     tvec = [tvec[0] + 0.0828, tvec[1], tvec[2]]
                 elif current_id == self.id_back_R:
                     # adjust angle 45 degrees ccw
+                    q_rot = [0, -0.3826834, 0, 0.9238795]
+                    q = aa2quat((rvec[0][0]))
+                    q = mul_quaternion(q, q_rot)
                     # move forward 5.94cm, left 5.94cm
-                    q = aa2quat(rvec[0][0])
-                    e = euler_from_quaternion(q)
-                    e = [e[0], e[1] - np.pi / 4, e[2]]
                     tvec = tvec[0][0]
                     tvec = [tvec[0] + 0.0594, tvec[1], tvec[2] - 0.0594]
                 elif current_id == self.id_right:
                     # angle is good
                     # move left 8.28cm
                     q = aa2quat(rvec[0][0])
-                    e = euler_from_quaternion(q)
                     tvec = tvec[0][0]
                     tvec = [tvec[0], tvec[1], tvec[2] - 0.08]
                 elif current_id == self.id_front_R:
                     # angle rotate 45 degrees cw
+                    q_rot = [0, 0.3826834, 0, 0.9238795]
+                    q = aa2quat((rvec[0][0]))
+                    q = mul_quaternion(q, q_rot)
                     # move backward 5.94cm, left 5.94cm
-                    q = aa2quat(rvec[0][0])
-                    e = euler_from_quaternion(q)
-                    e = [e[0], e[1] + np.pi / 4, e[2]]
                     tvec = tvec[0][0]
                     tvec = [tvec[0] - 0.0594, tvec[1], tvec[2] - 0.0594]
                 elif current_id == self.id_front:
                     # adjust angle 90 degrees cw
+                    q_rot = [0, 0.7071068, 0, 0.7071068]
+                    q = aa2quat((rvec[0][0]))
+                    q = mul_quaternion(q, q_rot)
                     # move backward 8.28cm
-                    q = aa2quat(rvec[0][0])
-                    e = euler_from_quaternion(q)
-                    e = [e[0], e[1] + np.pi / 2, e[2]]
                     tvec = tvec[0][0]
                     tvec = [tvec[0] - 0.0828, tvec[1], tvec[2]]
                 elif current_id == self.id_front_L:
-                    # angle rotate 135 degrees ccw
+                    # angle rotate 135 degrees cw
+                    q_rot = [0, 0.9238795, 0, 0.3826834]
+                    q = aa2quat((rvec[0][0]))
+                    q = mul_quaternion(q, q_rot)
                     # move backward 5.94cm, right 5.94cm
-                    q = aa2quat(rvec[0][0])
-                    e = euler_from_quaternion(q)
-                    e = [e[0], e[1] + 3 * np.pi / 4, e[2]]
                     tvec = tvec[0][0]
                     tvec = [tvec[0] - 0.0594, tvec[1], tvec[2] + 0.0594]
                 elif current_id == self.id_left:
                     # angle rotate 180 degrees cw
-                    # move left 8.28cm
+                    q_rot = [0, 1, 0, 0]
                     q = aa2quat(rvec[0][0])
-                    e = euler_from_quaternion(q)
-                    e = [e[0], e[1] + np.pi, e[2]]
+                    q = mul_quaternion(q, q_rot)
+                    # move left 8.28cm
                     tvec = tvec[0][0]
                     tvec = [tvec[0], tvec[1], tvec[2] - 0.05]
                 elif current_id == self.id_back_L:
-                    # angle rotate 135 degrees cw
+                    # angle rotate 135 degrees ccw
+                    q_rot = [0, -0.9238795, 0, 0.3826834]
+                    q = aa2quat((rvec[0][0]))
+                    q = mul_quaternion(q, q_rot)
                     # move forward 5.94cm, right 5.94cm
-                    q = aa2quat(rvec[0][0])
-                    e = euler_from_quaternion(q)
-                    e = [e[0], e[1] - 3 * np.pi / 4, e[2]]
                     tvec = tvec[0][0]
                     tvec = [tvec[0] + 0.0594, tvec[1], tvec[2] + 0.0594]
                 else:
                     q = self.last_q
-                    e = euler_from_quaternion(q)
                     tvec = self.last_tvec
 
-                # used for averaging
-                e_list_x.insert(i, e[0])
-                e_list_y.insert(i, e[1])
-                e_list_z.insert(i, e[2])
+                # # used for averaging
+                q_list.insert(i, q)
                 tvec_list_x.insert(i, tvec[0])
                 tvec_list_y.insert(i, tvec[1])
                 tvec_list_z.insert(i, tvec[2])
@@ -227,24 +296,15 @@ class HeadTracker:
             t2 = time.time()
             t3 = time.time()
 
-            # averaging pose between all markers
-            q_rej_rate = 0.8   # 0.40
+            # averaging orientation between all markers
+            q_list = np.array(q_list)
+            q = quatWAvgMarkley(q_list)
+
+            # # averaging postion between all markers
             tvec_rej_rate = 100  # 0.80
-            e_list_x_filtered = reject_outliers(e_list_x, q_rej_rate)
-            e_list_y_filtered = reject_outliers(e_list_y, q_rej_rate)
-            e_list_z_filtered = reject_outliers(e_list_z, q_rej_rate)
             tvec_list_x_filtered = reject_outliers(tvec_list_x, tvec_rej_rate)
             tvec_list_y_filtered = reject_outliers(tvec_list_y, tvec_rej_rate)
             tvec_list_z_filtered = reject_outliers(tvec_list_z, tvec_rej_rate)
-
-            # used for averaging pose between all markers
-            # if reject outliers phase removes all marker quaternion we use last useful quaternion
-            if len(e_list_x_filtered) < 1 or len(e_list_y_filtered) < 1 or len(e_list_z_filtered) < 1:
-                # q = self.last_q
-                q = quaternion_from_euler(np.mean(e_list_x), np.mean(e_list_y), np.mean(e_list_z))
-            else:
-                q = quaternion_from_euler(np.mean(e_list_x_filtered), np.mean(e_list_y_filtered),
-                                          np.mean(e_list_z_filtered))
             # if reject outliers phase removes all marker translation we use last useful translation
             if len(tvec_list_x_filtered) < 1 or len(tvec_list_y_filtered) < 1 or len(tvec_list_z_filtered) < 1:
                 # tvec = self.last_tvec
@@ -256,11 +316,10 @@ class HeadTracker:
             self.last_tvec = copy.deepcopy(tvec)
             t4 = time.time()
 
-            # average markers with previous markers
+            # # average orientation of markers with previous markers
             t9 = time.time()
-            self.outMarker = euler_from_quaternion(q)
-            eul = self.average_markers()
-            q = quaternion_from_euler(eul[0],eul[1],eul[2])
+            self.outMarker = q
+            q = self.average_marker_orientation(10, 0.5, 1)  # blank
             t10 = time.time()
 
             # assemble pose message
@@ -286,45 +345,26 @@ class HeadTracker:
 
             time_message = "Identifying Markers: {} seconds\nProcessing Markers: {} seconds\nAveraging Markers: {} " \
                            "seconds\nAveraging previous {} marker(s): {} seconds"
-            print(time_message.format(t8 - t7, t2 - t1, t4 - t3, self.n_avg_marker, t10-t9))
-            self.t1_4 = (t2 - t1 + t4 - t3 + t10-t9)
+            print(time_message.format(t8 - t7, t2 - t1, t4 - t3, self.n_avg_marker, t10 - t9))
+            self.t1_4 = (t2 - t1 + t4 - t3 + t10 - t9)
         else:
             self.t1_4 = 0
             time_message = "Identifying Markers: {} seconds"
             print(time_message.format(t8 - t7))
             print "No Markers detected"
 
-    def average_markers(self, n_avg_marker=10):
+    def average_marker_orientation(self, n_avg_marker=10, rej_factor=1, axis=3):
         self.n_avg_marker = n_avg_marker
         self.marker_arr.append(copy.deepcopy(self.outMarker))
         self.marker_arr = self.marker_arr[1:self.n_avg_marker + 1]
 
-        final_marker = [0,0,0]
-
-        ex_list = []
-        ey_list = []
-        ez_list = []
-        for markers in self.marker_arr:
-            ex_list.append(markers[0])
-            ey_list.append(markers[1])
-            ez_list.append(markers[2])
-
-        rej_rate = 1.5
-        ex_filtered = reject_outliers(ex_list, rej_rate)
-        ey_filtered = reject_outliers(ey_list, rej_rate)
-        ez_filtered = reject_outliers(ez_list, rej_rate)
-
-        # if reject outliers phase removes all orientation we use average across non filtered orientation
-        if len(ex_filtered) < 1 or len(ey_filtered) < 1 or len(ez_filtered) < 1:
-            final_marker[0] = np.mean(ex_list)
-            final_marker[1] = np.mean(ey_list)
-            final_marker[2] = np.mean(ey_list)
+        q_list = np.array(self.marker_arr)
+        q_list_filtered = reject_quaternion_outliers(q_list, rej_factor, axis)
+        # if all data is removed from removing outliers we take median value
+        if q_list_filtered is None:
+            return quaternion_median(q_list)
         else:
-            final_marker[0] = np.mean(ex_filtered)
-            final_marker[1] = np.mean(ey_filtered)
-            final_marker[2] = np.mean(ez_filtered)
-
-        return final_marker
+            return quatWAvgMarkley(q_list_filtered)
 
     def average_poses(self, n_avg_pose=12):
         t5 = time.time()
@@ -340,27 +380,20 @@ class HeadTracker:
         final_pose.header = header
 
         x_list = []
-        y_list = []
+        y_list = []                                   
         z_list = []
-        er_list = []
-        ep_list = []
-        ey_list = []
+        q_list = []
         for poses in self.pose_arr:
             x_list.append(poses.pose.position.x)
             y_list.append(poses.pose.position.y)
             z_list.append(poses.pose.position.z)
-            eul = euler_from_quaternion(
-                [poses.pose.orientation.x, poses.pose.orientation.y, poses.pose.orientation.z,
-                 poses.pose.orientation.w])
-            er_list.append(eul[0])
-            ep_list.append(eul[1])
-            ey_list.append(eul[2])
+            q = [poses.pose.orientation.x, poses.pose.orientation.y, poses.pose.orientation.z, poses.pose.orientation.w]
+            q_list.append(q)
 
         rej_out_rate_trans = 100  # 0.75
         x_filtered = reject_outliers(x_list, rej_out_rate_trans)
         y_filtered = reject_outliers(y_list, rej_out_rate_trans)
         z_filtered = reject_outliers(z_list, rej_out_rate_trans)
-
         # if reject outliers phase removes all trans we use average across non filtered trans
         if len(x_filtered) < 1 or len(y_filtered) < 1 or len(z_filtered) < 1:
             final_pose.pose.position.x = np.mean(x_list)
@@ -371,36 +404,22 @@ class HeadTracker:
             final_pose.pose.position.y = np.mean(y_filtered)
             final_pose.pose.position.z = np.mean(z_filtered)
 
-        rej_out_rate_orient = 1.5  # 0.75
-        er_filtered = reject_outliers(er_list, rej_out_rate_orient)
-        ep_filtered = reject_outliers(ep_list, rej_out_rate_orient)
-        ey_filtered = reject_outliers(ey_list, rej_out_rate_orient)
-        # if reject outliers phase removes all orientation we use average across non filtered orientation
-        if len(er_filtered) < 1 or len(ep_filtered) < 1 or len(ey_filtered) < 1:
-            quat = quaternion_from_euler(np.mean(er_list), np.mean(ep_list), np.mean(ey_list))
-            final_pose.pose.orientation.x = quat[0]
-            final_pose.pose.orientation.y = quat[1]
-            final_pose.pose.orientation.z = quat[2]
-            final_pose.pose.orientation.w = quat[3]
+        # average orientation
+        # check for outliers along w - rem any outliers we can from that information
+        q_list = np.array(q_list)
+        q_list_filtered = reject_quaternion_outliers(q_list,1,1)
+        # if all data is removed from removing outliers we take median value
+        if q_list_filtered is None:
+            q = quaternion_median(q_list)
         else:
-            quat = quaternion_from_euler(np.mean(er_filtered), np.mean(ep_filtered), np.mean(ey_filtered))
-            final_pose.pose.orientation.x = quat[0]
-            final_pose.pose.orientation.y = quat[1]
-            final_pose.pose.orientation.z = quat[2]
-            final_pose.pose.orientation.w = quat[3]
+            q = quatWAvgMarkley(q_list_filtered)
 
-        # TODO switch y and z axes for scooter implementation
-        # move pose down so ray extends from user's eye-line
-        #
-        t = [0, 0, 0]
-        q = [0, 0, 0, 1]
-        t[0] = final_pose.pose.position.x
-        t[1] = final_pose.pose.position.y
-        t[2] = final_pose.pose.position.z
-        q[0] = final_pose.pose.orientation.x
-        q[1] = final_pose.pose.orientation.y
-        q[2] = final_pose.pose.orientation.z
-        q[3] = final_pose.pose.orientation.w
+
+        final_pose.pose.orientation.x = q[0]
+        final_pose.pose.orientation.y = q[1]
+        final_pose.pose.orientation.z = q[2]
+        final_pose.pose.orientation.w = q[3]
+
         # end averaging pose to pose
         t6 = time.time()
 
@@ -409,20 +428,28 @@ class HeadTracker:
         print(time_message.format(self.n_avg_pose, t6 - t5))
         print(total.format(self.t1_4 + t6 - t5))
 
+        self.final_pose = final_pose
+        self.publish(final_pose)
+
+    def publish(self, pose):
+        if pose is None:
+            pose = self.final_pose
         # publish pose
-        self.pubPose.publish(final_pose)
+        self.pubPose.publish(pose)
 
         # publish tf frame that matches pose
         t = [0, 0, 0]
         q = [0, 0, 0, 1]
-        t[0] = final_pose.pose.position.x
-        t[1] = final_pose.pose.position.y
-        t[2] = final_pose.pose.position.z
-        q[0] = final_pose.pose.orientation.x
-        q[1] = final_pose.pose.orientation.y
-        q[2] = final_pose.pose.orientation.z
-        q[3] = final_pose.pose.orientation.w
+        t[0] = pose.pose.position.x
+        t[1] = pose.pose.position.y
+        t[2] = pose.pose.position.z
+        q[0] = pose.pose.orientation.x
+        q[1] = pose.pose.orientation.y
+        q[2] = pose.pose.orientation.z
+        q[3] = pose.pose.orientation.w
         br = tf.TransformBroadcaster()
+        # TODO switch y and z axes for scooter implementation
+        # move ray down to shoot from user's eyeline
         # br.sendTransform(t, q, rospy.Time.now(), "/tracking_markers", "/camera_link")
 
         # move down x cm and forward x cm
@@ -430,44 +457,6 @@ class HeadTracker:
         # q = [0,0,0,1]
         # br.sendTransform(t, q, rospy.Time.now(), "/laser_origin", "/tracking_markers")
         br.sendTransform(t, q, rospy.Time.now(), "/laser_origin", "/camera_link")
-
-    # # not needed. turns out tf is great
-    # def move_xyz_along_axis(self, xyz, orientation, axis, distance):
-    #     if axis == "X" or axis =='x':
-    #         # depends on pitch & yaw
-    #         if np.cos(orientation[1]) < np.cos(orientation[2]):
-    #             xyz[0] += distance * np.cos(orientation[1])
-    #         else:
-    #             xyz[0] += distance * np.cos(orientation[2])
-    #         # depends on yaw
-    #         xyz[1] += distance * np.sin(orientation[2])
-    #         # depends on pitch
-    #         xyz[2] -= distance * np.sin(orientation[1])
-    #         return xyz
-    #     elif axis == "Y" or axis =='y':
-    #         # depends on yaw
-    #         xyz[0] += distance * np.sin(orientation[2])
-    #         # depends on yaw & roll
-    #         if np.cos(orientation[0]) < np.cos(orientation[2]):
-    #             xyz[1] += distance * np.cos(orientation[0])
-    #         else:
-    #             xyz[1] += distance * np.cos(orientation[2])
-    #         # depends on roll
-    #         xyz[2] += distance * np.sin(orientation[0])
-    #         return xyz
-    #     elif axis == "Z" or axis =='z':
-    #         # depends on pitch
-    #         xyz[0] += distance * np.sin(orientation[1])
-    #         # depends on roll
-    #         xyz[1] += distance * np.sin(orientation[0])
-    #         # depends on roll & pitch
-    #         if np.cos(orientation[0]) < np.cos(orientation[1]):
-    #             xyz[2] += distance * np.cos(orientation[0])
-    #         else:
-    #             xyz[2] += distance * np.cos(orientation[1])
-    #         return xyz
-    #     else:
-    #         return xyz
 
 
 def head_track():
@@ -487,7 +476,8 @@ def head_track():
     rate = rospy.Rate(30.0)
     while not rospy.is_shutdown():
         # average across previous x poses / and publish
-        HT.average_poses(12)
+        HT.average_poses(12) # 12
+        #HT.publish(HT.outPose)
         rate.sleep()
 
 
