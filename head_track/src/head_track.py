@@ -22,25 +22,40 @@ from cv_bridge import CvBridge
 bridge = CvBridge()
 
 
-# convert from axis angle rotation to quaternion
 def aa2quat(aa):
+    """
+    convert from axis angle rotation to quaternion
+    :param aa: orientation in axis angle notation
+    returns quaternion orientation
+    """
     angle = np.linalg.norm(aa)
     axis = (aa[0] / angle, aa[1] / angle, aa[2] / angle)
     angle_2 = angle / 2
     return [axis[0] * np.sin(angle_2), axis[1] * np.sin(angle_2), axis[2] * np.sin(angle_2), np.cos(angle_2)]
 
 
-# used for averaging / lower factor = more strict
-def reject_outliers(dataIn, factor=0.8):
-    quant3, quant1 = np.percentile(dataIn, [75, 25])
+def reject_outliers(data_in, factor=0.8):
+    """
+    takes a list of data and removes outliers
+    :param data_in: raw data []
+    :param factor: determines how strictly outliers are removed
+    returns data w/out outliers []
+    """
+    quant3, quant1 = np.percentile(data_in, [75, 25])
     iqr = quant3 - quant1
-    iqrSigma = iqr / 1.34896
-    medData = np.median(dataIn)
-    dataOut = [x for x in dataIn if ((x > medData - factor * iqrSigma) and (x < medData + factor * iqrSigma))]
-    return dataOut
+    iqr_sigma = iqr / 1.34896
+    med_data = np.median(data_in)
+    data_out = [x for x in data_in if ((x > med_data - factor * iqr_sigma) and (x < med_data + factor * iqr_sigma))]
+    return data_out
 
 
 def mul_quaternion(quaternion_1, quaternion_0):
+    """
+    used to multiply quaternions - mul one by the other to rotate
+    :param quaternion_1: base quaternion []
+    :param quaternion_0: quaternion that determines rotation []
+    return quaternion []
+    """
     a, b, c, d = quaternion_0
     e, f, g, h = quaternion_1
     coeff_1 = a * e - b * f - c * g - d * h
@@ -52,10 +67,12 @@ def mul_quaternion(quaternion_1, quaternion_0):
 
 
 def quatWAvgMarkley(Q, weights=None):
-    # Averaging Quaternions.
-    # Arguments:
-    #     Q(ndarray): an Mx4 ndarray of quaternions.
-    #     weights(list): an M elements list, a weight for each quaternion.
+    """
+    Averages quaternions
+    :param Q: (ndarray): an Mx4 ndarray of quaternions.
+    :param weights: (list): an M elements list, a weight for each quaternion.
+    returns single quaternion
+    """
     if weights is None:
         weights = []
         i = 0
@@ -78,6 +95,12 @@ def quatWAvgMarkley(Q, weights=None):
 
 
 def quaternion_median(Q, axis=3):
+    """
+    sorts list of quaternions based on given axis and returns median
+    :param Q: (ndarray): an Mx4 ndarray of quaternions.
+    :param axis: which axis to sort on
+    returns median quaternion
+    """
     # q_list = Q[:,3]
     sorted_arr = Q[Q[:, axis].argsort()]
     # print 'sorted q_list: ', sorted_arr
@@ -85,6 +108,14 @@ def quaternion_median(Q, axis=3):
 
 
 def reject_quaternion_outliers(q_list, factor, axis=3):
+    """
+    removes outliers from a list of quaternions based on given axis
+    :param q_list: (ndarray): an Mx4 ndarray of quaternions.
+    :param factor: determines how strictly outliers are removed
+    :param axis: which axis to based outlier removal on
+    returns list of quaternions - outliers
+    if all list items are 'Outliers' and removed then return None
+    """
     q_list = np.array(q_list)
     # check for outliers along w - rem any outliers we can from that information
     factor = factor
@@ -102,16 +133,24 @@ def reject_quaternion_outliers(q_list, factor, axis=3):
 
     q_list_filtered = q_list[indices_rem]
     if len(q_list_filtered) < 1:
-        print 'REMOVED ALL'
+        #print 'REMOVED ALL'
         return None
     else:
         # print 'len of q_list_filtered: ', len(q_list_filtered)
-        print 'REMOVED: ', (len(q_list) - len(q_list_filtered))
-        print str(len(q_list_filtered)) + '/' + str(len(q_list))
+        #print 'REMOVED: ', (len(q_list) - len(q_list_filtered))
+        #print str(len(q_list_filtered)) + '/' + str(len(q_list))
         return np.array(q_list_filtered)
 
 
 def average_position(xyz_list, rej_factor, axis):
+    """
+    takes a list of xyz coordinates and returns the average
+    :param xyz_list: list of xyz coordinates
+    :param rej_factor: determines how strictly outliers are removed
+    :param axis: which axis to based outlier removal on
+    returns average xyz
+    if all list items are 'Outliers' and removed then return median xyz
+    """
     t_list = np.array(xyz_list)
     factor = rej_factor
 
@@ -137,6 +176,14 @@ def average_position(xyz_list, rej_factor, axis):
 
 
 def average_orientation(q_list, rej_factor=1, axis=3):
+    """
+    takes a list of quaternions and returns the average
+    :param q_list: list of quaternions
+    :param rej_factor: determines how strictly outliers are removed
+    :param axis: which axis to based outlier removal on
+    returns average quaternion
+    if all list items are 'Outliers' and removed then return median quaternion
+    """
     q_list_filtered = reject_quaternion_outliers(q_list, rej_factor, axis)
     # if all data is removed from removing outliers we take median value
     if q_list_filtered is None:
@@ -148,6 +195,7 @@ def average_orientation(q_list, rej_factor=1, axis=3):
 class HeadTracker:
     def __init__(self, marker_size, camera_matrix, camera_distortion, n_avg_previous_marker=10, n_avg_previous_pose=12):
         rospy.init_node('head_tracker', anonymous=True)
+        # TODO: Change to subscribe to image topic published by scooter
         rospy.Subscriber("/camera/color/image_raw", sensor_msgs.msg.Image, self.callback)
 
         # set up image publisher
@@ -198,7 +246,9 @@ class HeadTracker:
         self.pose_arr = []
         def_pose = geometry_msgs.msg.PoseStamped()
         header = HeaderMsg()
-        header.frame_id = '/camera_link'
+
+        # TODO: switch to base_link for scooter (already done for you)
+        header.frame_id = '/base_link'
         header.stamp = 0
         def_pose.header = header
         def_pose.pose.position.x = 0
@@ -213,7 +263,6 @@ class HeadTracker:
             self.pose_arr.insert(i, def_pose)
             i += 1
 
-        # TODO: check if these are used anywhere
         self.last_tvec = [0, 0, 0]
         self.last_q = [0, 0, 0, 1]
 
@@ -253,13 +302,10 @@ class HeadTracker:
                 cv2.aruco.drawDetectedMarkers(frame, corners)  # , ids)
                 cv2.aruco.drawAxis(frame, self.camera_matrix, self.camera_distortion, rvec, tvec, self.marker_size / 2)
                 # ----------------------------------------------------------- #
-                #   NOTE:   angles here are applied to pitch instead of yaw   #
+                #   NOTE:   angles here are applied to y instead of z         #
                 #           due to an issue on my end where everything is     #
-                #           rotated 90 degrees. in the final version all      #
-                #           rotations will be applied to yaw                  #
-                #           (essentially mine is RYP instead of RPY)          #
+                #           rotated 90 degrees.                               #
                 # ----------------------------------------------------------- #
-                # TODO switch y and z axes for scooter implementation
                 # I used https://www.andre-gaschler.com/rotationconverter/ to get quaternion rot values
                 current_id = ids[i]
                 if current_id == self.id_back:
@@ -327,10 +373,15 @@ class HeadTracker:
                 else:
                     q = self.last_q
                     tvec = self.last_tvec
+                # TODO: I think this is right so leave it alone for now, but if you run into issues be sure to
+                #  investigate this
+                # SWAP Y and Z for Scooter
+                q = [q[0], q[2], q[1], q[3]]
+
                 self.last_q = copy.deepcopy(q)
                 self.last_tvec = copy.deepcopy(tvec)
 
-                # # used for averaging
+                # used for averaging
                 q_list.insert(i, q)
                 tvec_list_x.insert(i, tvec[0])
                 tvec_list_y.insert(i, tvec[1])
@@ -370,7 +421,8 @@ class HeadTracker:
             pose = geometry_msgs.msg.PoseStamped()
 
             header = HeaderMsg()
-            header.frame_id = '/camera_link'
+            # TODO: switch to base_link for scooter  (already done for you)
+            header.frame_id = '/base_link'
             header.stamp = rospy.Time.now()
             pose.header = header
 
@@ -398,60 +450,40 @@ class HeadTracker:
 
     def average_poses(self):
         t5 = time.time()
-        # averaging pose to pose
+        # add most recent pose to array of poses
         self.pose_arr.append(copy.deepcopy(self.outPose))
         self.pose_arr = self.pose_arr[1:self.n_avg_previous_pose + 1]
 
-        final_pose = geometry_msgs.msg.PoseStamped()
-        header = HeaderMsg()
-        header.frame_id = '/camera_link'
-        header.stamp = rospy.Time.now()
-        final_pose.header = header
-
-        # x_list = []
-        # y_list = []
-        # z_list = []
+        # average position and orientation of poses
         q_list = []
         t_list = []
         for poses in self.pose_arr:
-            # x_list.append(poses.pose.position.x)
-            # y_list.append(poses.pose.position.y)
-            # z_list.append(poses.pose.position.z)
-            t_list.append([poses.pose.position.x,poses.pose.position.y,poses.pose.position.z])
+            t_list.append([poses.pose.position.x, poses.pose.position.y, poses.pose.position.z])
             q = [poses.pose.orientation.x, poses.pose.orientation.y, poses.pose.orientation.z, poses.pose.orientation.w]
             q_list.append(q)
-
+        # average position
         t_list = np.array(t_list)
         tvec = average_position(t_list, 100, 0)  # rej_factor, axis
-        final_pose.pose.position.x = tvec[0]
-        final_pose.pose.position.y = tvec[1]
-        final_pose.pose.position.z = tvec[2]
-
-        # rej_out_rate_trans = 100  # 0.75
-        # x_filtered = reject_outliers(x_list, rej_out_rate_trans)
-        # y_filtered = reject_outliers(y_list, rej_out_rate_trans)
-        # z_filtered = reject_outliers(z_list, rej_out_rate_trans)
-        # # if reject outliers phase removes all trans we use average across non filtered trans
-        # if len(x_filtered) < 1 or len(y_filtered) < 1 or len(z_filtered) < 1:
-        #     final_pose.pose.position.x = np.mean(x_list)
-        #     final_pose.pose.position.y = np.mean(y_list)
-        #     final_pose.pose.position.z = np.mean(z_list)
-        # else:
-        #     final_pose.pose.position.x = np.mean(x_filtered)
-        #     final_pose.pose.position.y = np.mean(y_filtered)
-        #     final_pose.pose.position.z = np.mean(z_filtered)
-
         # average orientation
         q_list = np.array(q_list)
         q = average_orientation(q_list, 1, 1)
+        # end averaging pose to pose
+        t6 = time.time()
 
+        # assembling pose message
+        final_pose = geometry_msgs.msg.PoseStamped()
+        header = HeaderMsg()
+        # TODO TODO: switch to base_link for scooter  (already done for you)
+        header.frame_id = '/base_link'
+        header.stamp = rospy.Time.now()
+        final_pose.header = header
+        final_pose.pose.position.x = tvec[0]
+        final_pose.pose.position.y = tvec[1]
+        final_pose.pose.position.z = tvec[2]
         final_pose.pose.orientation.x = q[0]
         final_pose.pose.orientation.y = q[1]
         final_pose.pose.orientation.z = q[2]
         final_pose.pose.orientation.w = q[3]
-
-        # end averaging pose to pose
-        t6 = time.time()
 
         time_message = "Averaging previous {} pose(s): {} seconds "
         total = "Total time: {} seconds\n"
@@ -461,7 +493,8 @@ class HeadTracker:
         self.final_pose = final_pose
         self.publish(final_pose)
 
-    def publish(self, pose, frame = "/laser_origin", parent="/camera_link"):
+    # TODO: switch to base_link for scooter  (already done for you)
+    def publish(self, pose, frame="/laser_origin", parent="/base_link"):
         if pose is None:
             pose = self.final_pose
         # publish pose
@@ -478,8 +511,7 @@ class HeadTracker:
         q[2] = pose.pose.orientation.z
         q[3] = pose.pose.orientation.w
         br = tf.TransformBroadcaster()
-        # TODO switch y and z axes for scooter implementation
-        # TODO move ray down to shoot from user's eyeline
+        # move ray down to shoot from user's eyeline
         # br.sendTransform(t, q, rospy.Time.now(), "/tracking_markers", "/camera_link")
 
         # move down x cm and forward x cm
@@ -490,12 +522,15 @@ class HeadTracker:
 
 
 def head_track():
+    # TODO: select your size of marker in m
     # marker_size
     # marker_size = 0.065   # 1x1
     # marker_size = 0.03    # 2x2
-    marker_size = 0.02    # 3x3
+    marker_size = 0.02  # 3x3
 
     # get camera calibration
+    # TODO: have a path for these on the scooter
+    # TODO: have different matrix and distortion for camera used on scooter
     calib_path = '/home/csrobot/catkin_ws/src/head_track/calibration/'
     camera_matrix = np.loadtxt(calib_path + 'cameraMatrix.txt', delimiter=',')
     camera_distortion = np.loadtxt(calib_path + 'cameraDistortion.txt', delimiter=',')
@@ -511,7 +546,6 @@ def head_track():
     while not rospy.is_shutdown():
         # average across previous x poses / and publish
         HT.average_poses()
-        #HT.publish(HT.outPose)
         rate.sleep()
 
 
