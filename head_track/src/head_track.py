@@ -78,10 +78,10 @@ def quatWAvgMarkley(Q, weights=None):
 
 
 def quaternion_median(Q, axis=3):
-    #q_list = Q[:,3]
-    sorted_arr = Q[Q[:,axis].argsort()]
-    #print 'sorted q_list: ', sorted_arr
-    return sorted_arr[len(Q)/2]
+    # q_list = Q[:,3]
+    sorted_arr = Q[Q[:, axis].argsort()]
+    # print 'sorted q_list: ', sorted_arr
+    return sorted_arr[len(Q) / 2]
 
 
 def reject_quaternion_outliers(q_list, factor, axis=3):
@@ -102,17 +102,51 @@ def reject_quaternion_outliers(q_list, factor, axis=3):
 
     q_list_filtered = q_list[indices_rem]
     if len(q_list_filtered) < 1:
-        # print 'REMOVED ALL'
+        print 'REMOVED ALL'
         return None
     else:
         # print 'len of q_list_filtered: ', len(q_list_filtered)
-        # print 'REMOVED: ', (len(q_list) - len(q_list_filtered))
+        print 'REMOVED: ', (len(q_list) - len(q_list_filtered))
         print str(len(q_list_filtered)) + '/' + str(len(q_list))
         return np.array(q_list_filtered)
 
 
+def average_position(xyz_list, rej_factor, axis):
+    t_list = np.array(xyz_list)
+    factor = rej_factor
+
+    # check for outliers along x,y, or z - rem any outliers we can from that information
+    out_list = t_list[:, axis]
+    quant3, quant1 = np.percentile(out_list, [75, 25])
+    iqr = quant3 - quant1
+    iqrSigma = iqr / 1.34896
+    medData = np.median(out_list)
+    i = 0
+    indices_rem = []
+    while i < len(out_list):
+        if medData - factor * iqrSigma < out_list[i] < medData + factor * iqrSigma:
+            indices_rem.append(i)
+        i += 1
+
+    t_list_filtered = t_list[indices_rem]
+    if len(t_list_filtered) < 1:
+        sorted_arr = t_list[t_list[:, axis].argsort()]
+        return sorted_arr[len(sorted_arr) / 2]
+    else:
+        return [np.mean(t_list_filtered[:, 0]), np.mean(t_list_filtered[:, 1]), np.mean(t_list_filtered[:, 2])]
+
+
+def average_orientation(q_list, rej_factor=1, axis=3):
+    q_list_filtered = reject_quaternion_outliers(q_list, rej_factor, axis)
+    # if all data is removed from removing outliers we take median value
+    if q_list_filtered is None:
+        return quaternion_median(q_list)
+    else:
+        return quatWAvgMarkley(q_list_filtered)
+
+
 class HeadTracker:
-    def __init__(self, marker_size, camera_matrix, camera_distortion):
+    def __init__(self, marker_size, camera_matrix, camera_distortion, n_avg_previous_marker=10, n_avg_previous_pose=12):
         rospy.init_node('head_tracker', anonymous=True)
         rospy.Subscriber("/camera/color/image_raw", sensor_msgs.msg.Image, self.callback)
 
@@ -142,17 +176,25 @@ class HeadTracker:
 
         # number of previous markers we average with
         # larger number means smoother motion, but trails behind longer
-        self.n_avg_marker = 10
-        self.marker_arr = []
+        # marker orientation
+        self.n_avg_previous_marker = n_avg_previous_marker
+        self.marker_orient_arr = []
         def_quat = [0, 0, 0, 1]
         i = 0
-        while i < self.n_avg_marker:
-            self.marker_arr.insert(i, def_quat)
+        while i < self.n_avg_previous_marker:
+            self.marker_orient_arr.insert(i, def_quat)
+            i += 1
+        # marker position
+        self.marker_pos_arr = []
+        def_position = [0, 0, 0]
+        i = 0
+        while i < self.n_avg_previous_marker:
+            self.marker_pos_arr.insert(i, def_position)
             i += 1
 
         # number of previous poses we average with
         # larger number means smoother motion, but trails behind longer
-        self.n_avg_pose = 25
+        self.n_avg_previous_pose = n_avg_previous_pose
         self.pose_arr = []
         def_pose = geometry_msgs.msg.PoseStamped()
         header = HeaderMsg()
@@ -167,7 +209,7 @@ class HeadTracker:
         def_pose.pose.orientation.z = 0
         def_pose.pose.orientation.w = 1
         i = 0
-        while i < self.n_avg_pose:
+        while i < self.n_avg_previous_pose:
             self.pose_arr.insert(i, def_pose)
             i += 1
 
@@ -177,7 +219,6 @@ class HeadTracker:
 
         self.t1_4 = 0
 
-        self.outMarker = def_quat
         self.outPose = geometry_msgs.msg.PoseStamped()
         self.final_pose = def_pose
 
@@ -286,40 +327,43 @@ class HeadTracker:
                 else:
                     q = self.last_q
                     tvec = self.last_tvec
+                self.last_q = copy.deepcopy(q)
+                self.last_tvec = copy.deepcopy(tvec)
 
                 # # used for averaging
                 q_list.insert(i, q)
                 tvec_list_x.insert(i, tvec[0])
                 tvec_list_y.insert(i, tvec[1])
                 tvec_list_z.insert(i, tvec[2])
-
             t2 = time.time()
+
+            # average orientation and position of all currently viewable markers
             t3 = time.time()
-
-            # averaging orientation between all markers
+            # averaging orientation
             q_list = np.array(q_list)
-            q = quatWAvgMarkley(q_list)
-
-            # # averaging postion between all markers
-            tvec_rej_rate = 100  # 0.80
-            tvec_list_x_filtered = reject_outliers(tvec_list_x, tvec_rej_rate)
-            tvec_list_y_filtered = reject_outliers(tvec_list_y, tvec_rej_rate)
-            tvec_list_z_filtered = reject_outliers(tvec_list_z, tvec_rej_rate)
-            # if reject outliers phase removes all marker translation we use last useful translation
-            if len(tvec_list_x_filtered) < 1 or len(tvec_list_y_filtered) < 1 or len(tvec_list_z_filtered) < 1:
-                # tvec = self.last_tvec
-                tvec = [np.mean(tvec_list_x), np.mean(tvec_list_y), np.mean(tvec_list_z)]
-            else:
-                tvec = [np.mean(tvec_list_x_filtered), np.mean(tvec_list_y_filtered), np.mean(tvec_list_z_filtered)]
-
-            self.last_q = copy.deepcopy(q)
-            self.last_tvec = copy.deepcopy(tvec)
+            q = average_orientation(q_list, 0.8, 1)  # rej_factor, axis  # 1, 3
+            # averaging position
+            i = 0
+            t_list = []
+            while i < len(ids):
+                t_list.append([tvec_list_x[i], tvec_list_y[i], tvec_list_z[i]])
+                i += 1
+            t_list = np.array(t_list)
+            tvec = average_position(t_list, 100, 0)  # rej_factor, axis
             t4 = time.time()
 
-            # # average orientation of markers with previous markers
+            # average orientation and position of previous markers
             t9 = time.time()
-            self.outMarker = q
-            q = self.average_marker_orientation(10, 0.5, 1)  # blank
+            self.marker_orient_arr.append(copy.deepcopy(q))
+            self.marker_orient_arr = self.marker_orient_arr[1:self.n_avg_previous_marker + 1]
+            q_list = np.array(self.marker_orient_arr)
+            q = average_orientation(q_list, 0.5, 1)
+
+            # average position of markers with previous markers
+            self.marker_pos_arr.append(copy.deepcopy(tvec))
+            self.marker_pos_arr = self.marker_pos_arr[1:self.n_avg_previous_marker + 1]
+            t_list = np.array(self.marker_pos_arr)
+            tvec = average_position(t_list, 100, 0)
             t10 = time.time()
 
             # assemble pose message
@@ -340,38 +384,23 @@ class HeadTracker:
 
             self.outPose = pose
 
-            # display frame
-            self.pubIm.publish(bridge.cv2_to_imgmsg(frame, encoding="passthrough"))
-
             time_message = "Identifying Markers: {} seconds\nProcessing Markers: {} seconds\nAveraging Markers: {} " \
                            "seconds\nAveraging previous {} marker(s): {} seconds"
-            print(time_message.format(t8 - t7, t2 - t1, t4 - t3, self.n_avg_marker, t10 - t9))
+            print(time_message.format(t8 - t7, t2 - t1, t4 - t3, self.n_avg_previous_marker, t10 - t9))
             self.t1_4 = (t2 - t1 + t4 - t3 + t10 - t9)
         else:
             self.t1_4 = 0
             time_message = "Identifying Markers: {} seconds"
             print(time_message.format(t8 - t7))
             print "No Markers detected"
+        # display frame
+        self.pubIm.publish(bridge.cv2_to_imgmsg(frame, encoding="passthrough"))
 
-    def average_marker_orientation(self, n_avg_marker=10, rej_factor=1, axis=3):
-        self.n_avg_marker = n_avg_marker
-        self.marker_arr.append(copy.deepcopy(self.outMarker))
-        self.marker_arr = self.marker_arr[1:self.n_avg_marker + 1]
-
-        q_list = np.array(self.marker_arr)
-        q_list_filtered = reject_quaternion_outliers(q_list, rej_factor, axis)
-        # if all data is removed from removing outliers we take median value
-        if q_list_filtered is None:
-            return quaternion_median(q_list)
-        else:
-            return quatWAvgMarkley(q_list_filtered)
-
-    def average_poses(self, n_avg_pose=12):
+    def average_poses(self):
         t5 = time.time()
-        self.n_avg_pose = n_avg_pose
         # averaging pose to pose
         self.pose_arr.append(copy.deepcopy(self.outPose))
-        self.pose_arr = self.pose_arr[1:self.n_avg_pose + 1]
+        self.pose_arr = self.pose_arr[1:self.n_avg_previous_pose + 1]
 
         final_pose = geometry_msgs.msg.PoseStamped()
         header = HeaderMsg()
@@ -379,41 +408,42 @@ class HeadTracker:
         header.stamp = rospy.Time.now()
         final_pose.header = header
 
-        x_list = []
-        y_list = []                                   
-        z_list = []
+        # x_list = []
+        # y_list = []
+        # z_list = []
         q_list = []
+        t_list = []
         for poses in self.pose_arr:
-            x_list.append(poses.pose.position.x)
-            y_list.append(poses.pose.position.y)
-            z_list.append(poses.pose.position.z)
+            # x_list.append(poses.pose.position.x)
+            # y_list.append(poses.pose.position.y)
+            # z_list.append(poses.pose.position.z)
+            t_list.append([poses.pose.position.x,poses.pose.position.y,poses.pose.position.z])
             q = [poses.pose.orientation.x, poses.pose.orientation.y, poses.pose.orientation.z, poses.pose.orientation.w]
             q_list.append(q)
 
-        rej_out_rate_trans = 100  # 0.75
-        x_filtered = reject_outliers(x_list, rej_out_rate_trans)
-        y_filtered = reject_outliers(y_list, rej_out_rate_trans)
-        z_filtered = reject_outliers(z_list, rej_out_rate_trans)
-        # if reject outliers phase removes all trans we use average across non filtered trans
-        if len(x_filtered) < 1 or len(y_filtered) < 1 or len(z_filtered) < 1:
-            final_pose.pose.position.x = np.mean(x_list)
-            final_pose.pose.position.y = np.mean(y_list)
-            final_pose.pose.position.z = np.mean(z_list)
-        else:
-            final_pose.pose.position.x = np.mean(x_filtered)
-            final_pose.pose.position.y = np.mean(y_filtered)
-            final_pose.pose.position.z = np.mean(z_filtered)
+        t_list = np.array(t_list)
+        tvec = average_position(t_list, 100, 0)  # rej_factor, axis
+        final_pose.pose.position.x = tvec[0]
+        final_pose.pose.position.y = tvec[1]
+        final_pose.pose.position.z = tvec[2]
+
+        # rej_out_rate_trans = 100  # 0.75
+        # x_filtered = reject_outliers(x_list, rej_out_rate_trans)
+        # y_filtered = reject_outliers(y_list, rej_out_rate_trans)
+        # z_filtered = reject_outliers(z_list, rej_out_rate_trans)
+        # # if reject outliers phase removes all trans we use average across non filtered trans
+        # if len(x_filtered) < 1 or len(y_filtered) < 1 or len(z_filtered) < 1:
+        #     final_pose.pose.position.x = np.mean(x_list)
+        #     final_pose.pose.position.y = np.mean(y_list)
+        #     final_pose.pose.position.z = np.mean(z_list)
+        # else:
+        #     final_pose.pose.position.x = np.mean(x_filtered)
+        #     final_pose.pose.position.y = np.mean(y_filtered)
+        #     final_pose.pose.position.z = np.mean(z_filtered)
 
         # average orientation
-        # check for outliers along w - rem any outliers we can from that information
         q_list = np.array(q_list)
-        q_list_filtered = reject_quaternion_outliers(q_list,1,1)
-        # if all data is removed from removing outliers we take median value
-        if q_list_filtered is None:
-            q = quaternion_median(q_list)
-        else:
-            q = quatWAvgMarkley(q_list_filtered)
-
+        q = average_orientation(q_list, 1, 1)
 
         final_pose.pose.orientation.x = q[0]
         final_pose.pose.orientation.y = q[1]
@@ -425,13 +455,13 @@ class HeadTracker:
 
         time_message = "Averaging previous {} pose(s): {} seconds "
         total = "Total time: {} seconds\n"
-        print(time_message.format(self.n_avg_pose, t6 - t5))
+        print(time_message.format(self.n_avg_previous_pose, t6 - t5))
         print(total.format(self.t1_4 + t6 - t5))
 
         self.final_pose = final_pose
         self.publish(final_pose)
 
-    def publish(self, pose):
+    def publish(self, pose, frame = "/laser_origin", parent="/camera_link"):
         if pose is None:
             pose = self.final_pose
         # publish pose
@@ -449,34 +479,38 @@ class HeadTracker:
         q[3] = pose.pose.orientation.w
         br = tf.TransformBroadcaster()
         # TODO switch y and z axes for scooter implementation
-        # move ray down to shoot from user's eyeline
+        # TODO move ray down to shoot from user's eyeline
         # br.sendTransform(t, q, rospy.Time.now(), "/tracking_markers", "/camera_link")
 
         # move down x cm and forward x cm
         # t = [0.10,-0.22,0]
         # q = [0,0,0,1]
         # br.sendTransform(t, q, rospy.Time.now(), "/laser_origin", "/tracking_markers")
-        br.sendTransform(t, q, rospy.Time.now(), "/laser_origin", "/camera_link")
+        br.sendTransform(t, q, rospy.Time.now(), frame, parent)
 
 
 def head_track():
     # marker_size
-    # 0.065     # 1x1
-    marker_size = 0.03  # 4x4
-    # 0.02      # 4x4
+    # marker_size = 0.065   # 1x1
+    # marker_size = 0.03    # 2x2
+    marker_size = 0.02    # 3x3
 
     # get camera calibration
     calib_path = '/home/csrobot/catkin_ws/src/head_track/calibration/'
     camera_matrix = np.loadtxt(calib_path + 'cameraMatrix.txt', delimiter=',')
     camera_distortion = np.loadtxt(calib_path + 'cameraDistortion.txt', delimiter=',')
 
-    # Create object
-    HT = HeadTracker(marker_size, camera_matrix, camera_distortion)
+    # averaging
+    n_previous_marker = 8
+    n_previous_pose = 10
 
-    rate = rospy.Rate(30.0)
+    # Create object
+    HT = HeadTracker(marker_size, camera_matrix, camera_distortion, n_previous_marker, n_previous_pose)
+
+    rate = rospy.Rate(20.0)
     while not rospy.is_shutdown():
         # average across previous x poses / and publish
-        HT.average_poses(12) # 12
+        HT.average_poses()
         #HT.publish(HT.outPose)
         rate.sleep()
 
