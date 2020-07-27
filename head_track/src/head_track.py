@@ -133,12 +133,12 @@ def reject_quaternion_outliers(q_list, factor, axis=3):
 
     q_list_filtered = q_list[indices_rem]
     if len(q_list_filtered) < 1:
-        #print 'REMOVED ALL'
+        # print 'REMOVED ALL'
         return None
     else:
         # print 'len of q_list_filtered: ', len(q_list_filtered)
-        #print 'REMOVED: ', (len(q_list) - len(q_list_filtered))
-        #print str(len(q_list_filtered)) + '/' + str(len(q_list))
+        # print 'REMOVED: ', (len(q_list) - len(q_list_filtered))
+        # print str(len(q_list_filtered)) + '/' + str(len(q_list))
         return np.array(q_list_filtered)
 
 
@@ -192,11 +192,55 @@ def average_orientation(q_list, rej_factor=1, axis=3):
         return quatWAvgMarkley(q_list_filtered)
 
 
+def move_xyz_along_axis(xyz, orientation, axis, distance):
+    orientation = euler_from_quaternion(orientation)
+    if axis == "X" or axis == 'x':
+        # depends on pitch & yaw
+        if np.cos(orientation[1]) < np.cos(orientation[2]):
+            xyz[0] += distance * np.cos(orientation[1])
+        else:
+            xyz[0] += distance * np.cos(orientation[2])
+        # depends on yaw
+        xyz[1] += distance * np.sin(orientation[2])
+        # depends on pitch
+        xyz[2] -= distance * np.sin(orientation[1])
+        return xyz
+    elif axis == "Y" or axis == 'y':
+        # depends on yaw
+        xyz[0] += distance * np.sin(orientation[2])
+        # depends on yaw & roll
+        if np.cos(orientation[0]) < np.cos(orientation[2]):
+            xyz[1] += distance * np.cos(orientation[0])
+        else:
+            xyz[1] += distance * np.cos(orientation[2])
+        # depends on roll
+        xyz[2] += distance * np.sin(orientation[0])
+        return xyz
+    elif axis == "Z" or axis == 'z':
+        # depends on pitch
+        xyz[0] += distance * np.sin(orientation[1])
+        # depends on roll
+        xyz[1] += distance * np.sin(orientation[0])
+        # depends on roll & pitch
+        if np.cos(orientation[0]) < np.cos(orientation[1]):
+            xyz[2] += distance * np.cos(orientation[0])
+        else:
+            xyz[2] += distance * np.cos(orientation[1])
+        return xyz
+    else:
+        return xyz
+
+
 class HeadTracker:
-    def __init__(self, marker_size, camera_matrix, camera_distortion, n_avg_previous_marker=10, n_avg_previous_pose=12):
+    def __init__(self, marker_size, camera_matrix, camera_distortion, parent_link, eye_height, eye_depth,
+                 n_avg_previous_marker=10, n_avg_previous_pose=12):
         rospy.init_node('head_tracker', anonymous=True)
         # TODO: Change to subscribe to image topic published by scooter
         rospy.Subscriber("/camera/color/image_raw", sensor_msgs.msg.Image, self.callback)
+
+        self.parent_link = parent_link
+        self.eye_height = eye_height
+        self.eye_depth = eye_depth
 
         # set up image publisher
         self.pubIm = rospy.Publisher("/detected_frame", sensor_msgs.msg.Image, queue_size=10)
@@ -247,8 +291,7 @@ class HeadTracker:
         def_pose = geometry_msgs.msg.PoseStamped()
         header = HeaderMsg()
 
-        # TODO: switch to base_link for scooter (already done for you)
-        header.frame_id = '/base_link'
+        header.frame_id = self.parent_link
         header.stamp = 0
         def_pose.header = header
         def_pose.pose.position.x = 0
@@ -307,10 +350,11 @@ class HeadTracker:
                 #           rotated 90 degrees.                               #
                 # ----------------------------------------------------------- #
                 # I used https://www.andre-gaschler.com/rotationconverter/ to get quaternion rot values
+                # TODO: find way to translate marker xyz to center of 'headset'
                 current_id = ids[i]
                 if current_id == self.id_back:
                     # adjust angle 90 degrees ccw
-                    q_rot = [0, -.7071068, 0, 0.7071068]
+                    q_rot = [0.7071068, 0, 0.7071068, 0]
                     q = aa2quat((rvec[0][0]))
                     q = mul_quaternion(q, q_rot)
                     # move forward 8.28cm
@@ -318,29 +362,34 @@ class HeadTracker:
                     tvec = [tvec[0] + 0.0828, tvec[1], tvec[2]]
                 elif current_id == self.id_back_R:
                     # adjust angle 45 degrees ccw
-                    q_rot = [0, -0.3826834, 0, 0.9238795]
+                    q_rot = [0.9238795, 0, 0.3826834, 0]
                     q = aa2quat((rvec[0][0]))
                     q = mul_quaternion(q, q_rot)
                     # move forward 5.94cm, left 5.94cm
                     tvec = tvec[0][0]
                     tvec = [tvec[0] + 0.0594, tvec[1], tvec[2] - 0.0594]
+                    # tvec = move_xyz_along_axis(tvec, q, "x", +0.0594)
+                    # tvec = move_xyz_along_axis(tvec, q, "y", -0.0594)
                 elif current_id == self.id_right:
                     # angle is good
                     # move left 8.28cm
                     q = aa2quat(rvec[0][0])
                     tvec = tvec[0][0]
-                    tvec = [tvec[0], tvec[1], tvec[2] - 0.08]
+                    tvec = [tvec[0], tvec[1], tvec[2] - 0.0828]
+                    # tvec = move_xyz_along_axis(tvec, q, "z", -0.0828)  # -0.0828)
                 elif current_id == self.id_front_R:
                     # angle rotate 45 degrees cw
-                    q_rot = [0, 0.3826834, 0, 0.9238795]
+                    q_rot = [0.9238795, 0, -0.3826834, 0]  # q_rot = [0, 0.3826834, 0, 0.9238795]
                     q = aa2quat((rvec[0][0]))
                     q = mul_quaternion(q, q_rot)
                     # move backward 5.94cm, left 5.94cm
                     tvec = tvec[0][0]
                     tvec = [tvec[0] - 0.0594, tvec[1], tvec[2] - 0.0594]
+                    # tvec = move_xyz_along_axis(tvec, q, "x", -0.0594)
+                    # tvec = move_xyz_along_axis(tvec, q, "y", -0.0594)
                 elif current_id == self.id_front:
                     # adjust angle 90 degrees cw
-                    q_rot = [0, 0.7071068, 0, 0.7071068]
+                    q_rot = [0.7071068, 0, -0.7071068, 0]
                     q = aa2quat((rvec[0][0]))
                     q = mul_quaternion(q, q_rot)
                     # move backward 8.28cm
@@ -348,7 +397,7 @@ class HeadTracker:
                     tvec = [tvec[0] - 0.0828, tvec[1], tvec[2]]
                 elif current_id == self.id_front_L:
                     # angle rotate 135 degrees cw
-                    q_rot = [0, 0.9238795, 0, 0.3826834]
+                    q_rot = [0.3826834, 0, -0.9238795, 0]
                     q = aa2quat((rvec[0][0]))
                     q = mul_quaternion(q, q_rot)
                     # move backward 5.94cm, right 5.94cm
@@ -356,15 +405,15 @@ class HeadTracker:
                     tvec = [tvec[0] - 0.0594, tvec[1], tvec[2] + 0.0594]
                 elif current_id == self.id_left:
                     # angle rotate 180 degrees cw
-                    q_rot = [0, 1, 0, 0]
+                    q_rot = [0, 0, 1, 0]
                     q = aa2quat(rvec[0][0])
                     q = mul_quaternion(q, q_rot)
                     # move left 8.28cm
                     tvec = tvec[0][0]
-                    tvec = [tvec[0], tvec[1], tvec[2] - 0.05]
+                    tvec = [tvec[0], tvec[1], tvec[2] + 0.0828]
                 elif current_id == self.id_back_L:
                     # angle rotate 135 degrees ccw
-                    q_rot = [0, -0.9238795, 0, 0.3826834]
+                    q_rot = [0.3826834, 0, 0.9238795, 0]
                     q = aa2quat((rvec[0][0]))
                     q = mul_quaternion(q, q_rot)
                     # move forward 5.94cm, right 5.94cm
@@ -376,7 +425,7 @@ class HeadTracker:
                 # TODO: I think this is right so leave it alone for now, but if you run into issues be sure to
                 #  investigate this
                 # SWAP Y and Z for Scooter
-                q = [q[0], q[2], q[1], q[3]]
+                # q = [q[0], q[2], q[1], q[3]]
 
                 self.last_q = copy.deepcopy(q)
                 self.last_tvec = copy.deepcopy(tvec)
@@ -421,8 +470,7 @@ class HeadTracker:
             pose = geometry_msgs.msg.PoseStamped()
 
             header = HeaderMsg()
-            # TODO: switch to base_link for scooter  (already done for you)
-            header.frame_id = '/base_link'
+            header.frame_id = self.parent_link
             header.stamp = rospy.Time.now()
             pose.header = header
 
@@ -436,9 +484,10 @@ class HeadTracker:
 
             self.outPose = pose
 
-            time_message = "Identifying Markers: {} seconds\nProcessing Markers: {} seconds\nAveraging Markers: {} " \
-                           "seconds\nAveraging previous {} marker(s): {} seconds"
-            print(time_message.format(t8 - t7, t2 - t1, t4 - t3, self.n_avg_previous_marker, t10 - t9))
+            time_message = "Identifying Markers: {} seconds\nProcessing {} Markers: {} seconds\nAveraging {} Markers: " \
+                           "{} seconds\nAveraging previous {} marker(s): {} seconds"
+            print(time_message.format(t8 - t7, len(ids), t2 - t1, len(ids), t4 - t3, self.n_avg_previous_marker,
+                                      t10 - t9))
             self.t1_4 = (t2 - t1 + t4 - t3 + t10 - t9)
         else:
             self.t1_4 = 0
@@ -473,8 +522,7 @@ class HeadTracker:
         # assembling pose message
         final_pose = geometry_msgs.msg.PoseStamped()
         header = HeaderMsg()
-        # TODO TODO: switch to base_link for scooter  (already done for you)
-        header.frame_id = '/base_link'
+        header.frame_id = self.parent_link
         header.stamp = rospy.Time.now()
         final_pose.header = header
         final_pose.pose.position.x = tvec[0]
@@ -493,8 +541,7 @@ class HeadTracker:
         self.final_pose = final_pose
         self.publish(final_pose)
 
-    # TODO: switch to base_link for scooter  (already done for you)
-    def publish(self, pose, frame="/laser_origin", parent="/base_link"):
+    def publish(self, pose, frame="/laser_origin"):
         if pose is None:
             pose = self.final_pose
         # publish pose
@@ -511,22 +558,22 @@ class HeadTracker:
         q[2] = pose.pose.orientation.z
         q[3] = pose.pose.orientation.w
         br = tf.TransformBroadcaster()
-        # move ray down to shoot from user's eyeline
-        # br.sendTransform(t, q, rospy.Time.now(), "/tracking_markers", "/camera_link")
+        # move ray down to shoot from user's eye-line
+        br.sendTransform(t, q, rospy.Time.now(), "/tracking_markers", self.parent_link)
 
         # move down x cm and forward x cm
-        # t = [0.10,-0.22,0]
-        # q = [0,0,0,1]
-        # br.sendTransform(t, q, rospy.Time.now(), "/laser_origin", "/tracking_markers")
-        br.sendTransform(t, q, rospy.Time.now(), frame, parent)
+        t = [self.eye_depth, self.eye_height, 0]
+        q = [0, 0, 0, 1]
+        br.sendTransform(t, q, rospy.Time.now(), "/laser_origin", "/tracking_markers")
+        # br.sendTransform(t, q, rospy.Time.now(), frame, self.parent_link)
 
 
 def head_track():
     # TODO: select your size of marker in m
     # marker_size
     # marker_size = 0.065   # 1x1
-    # marker_size = 0.03    # 2x2
-    marker_size = 0.02  # 3x3
+    marker_size = 0.03  # 2x2
+    # marker_size = 0.02  # 3x3
 
     # get camera calibration
     # TODO: have a path for these on the scooter
@@ -535,12 +582,21 @@ def head_track():
     camera_matrix = np.loadtxt(calib_path + 'cameraMatrix.txt', delimiter=',')
     camera_distortion = np.loadtxt(calib_path + 'cameraDistortion.txt', delimiter=',')
 
+    # TODO: switch to /base_link for scooter
+    # parent_link
+    parent_link = "/camera_link_2"
+
+    # eye-position
+    eye_height = -0.15
+    eye_depth = 0.15
+
     # averaging
     n_previous_marker = 8
     n_previous_pose = 10
 
     # Create object
-    HT = HeadTracker(marker_size, camera_matrix, camera_distortion, n_previous_marker, n_previous_pose)
+    HT = HeadTracker(marker_size, camera_matrix, camera_distortion, parent_link, eye_height, eye_depth,
+                     n_previous_marker, n_previous_pose)
 
     rate = rospy.Rate(20.0)
     while not rospy.is_shutdown():
