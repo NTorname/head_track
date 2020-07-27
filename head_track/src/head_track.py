@@ -348,80 +348,69 @@ class HeadTracker:
                 # ----------------------------------------------------------- #
                 # I used https://www.andre-gaschler.com/rotationconverter/ to get quaternion rot values
                 current_id = ids[i]
+                q = aa2quat((rvec[0][0]))
                 if current_id == self.id_back:
+                    # move IN 4cm
+                    tvec = tvec[0][0]
+                    tvec = move_xyz_along_axis(tvec, q, "z", -0.04)
                     # adjust angle 90 degrees ccw
                     q_rot = [0.7071068, 0, 0.7071068, 0]
-                    q = aa2quat((rvec[0][0]))
                     q = mul_quaternion(q, q_rot)
                     # rotate 90 so z is up
                     q_rot = [0.7071068, 0, 0, 0.7071068]
                     q = mul_quaternion(q, q_rot)
-                    # move forward 8.28cm
-                    tvec = tvec[0][0]
-                    # tvec = [tvec[0] + 0.0828, tvec[1], tvec[2]]
-                    tvec = move_xyz_along_axis(tvec, q, "x", 0.0828)
                 elif current_id == self.id_back_R:
+                    # move IN 4cm
+                    tvec = tvec[0][0]
+                    tvec = move_xyz_along_axis(tvec, q, "z", -0.04)
                     # adjust angle 45 degrees ccw
                     q_rot = [0.9238795, 0, 0.3826834, 0]
-                    q = aa2quat((rvec[0][0]))
                     q = mul_quaternion(q, q_rot)
                     # rotate 90 so z is up
                     q_rot = [0.7071068, 0, 0, 0.7071068]
                     q = mul_quaternion(q, q_rot)
-                    # move forward 5.94cm, left 5.94cm
-                    tvec = tvec[0][0]
-                    # tvec = [tvec[0] + 0.0594, tvec[1], tvec[2] - 0.0594]
-                    tvec = move_xyz_along_axis(tvec, q, "x", 0.0594)
-                    tvec = move_xyz_along_axis(tvec, q, "y", -0.0594)
                 elif current_id == self.id_right:
+                    # move IN 4cm
+                    tvec = tvec[0][0]
+                    tvec = move_xyz_along_axis(tvec, q, "z", -0.04)
                     # angle is good
-                    # move left 8.28cm
-                    q = aa2quat(rvec[0][0])
                     # rotate 90 so z is up
                     q_rot = [0.7071068, 0, 0, 0.7071068]
                     q = mul_quaternion(q, q_rot)
-                    tvec = tvec[0][0]
-                    # tvec = [tvec[0], tvec[1], tvec[2] - 0.0828]
-                    tvec = move_xyz_along_axis(tvec, q, "y", -0.0828)
                 elif current_id == self.id_front_R:
+                    # move IN 4cm
+                    tvec = tvec[0][0]
+                    tvec = move_xyz_along_axis(tvec, q, "z", -0.04)
                     # angle rotate 45 degrees cw
                     q_rot = [0.9238795, 0, -0.3826834, 0]  # q_rot = [0, 0.3826834, 0, 0.9238795]
-                    q = aa2quat((rvec[0][0]))
                     q = mul_quaternion(q, q_rot)
                     # rotate 90 so z is up
                     q_rot = [0.7071068, 0, 0, 0.7071068]
                     q = mul_quaternion(q, q_rot)
-                    # move backward 5.94cm, left 5.94cm
-                    tvec = tvec[0][0]
-                    # tvec = [tvec[0] - 0.0594, tvec[1], tvec[2] - 0.0594]
-                    tvec = move_xyz_along_axis(tvec, q, "x", -0.0594)
-                    tvec = move_xyz_along_axis(tvec, q, "y", -0.0594)
                 elif current_id == self.id_front:
+                    # move IN 4cm
+                    tvec = tvec[0][0]
+                    tvec = move_xyz_along_axis(tvec, q, "z", -0.04)
                     # adjust angle 90 degrees cw
                     q_rot = [0.7071068, 0, -0.7071068, 0]
-                    q = aa2quat((rvec[0][0]))
                     q = mul_quaternion(q, q_rot)
                     # rotate 90 so z is up
                     q_rot = [0.7071068, 0, 0, 0.7071068]
                     q = mul_quaternion(q, q_rot)
-                    # move backward 8.28cm
-                    tvec = tvec[0][0]
-                    # tvec = [tvec[0] - 0.0828, tvec[1], tvec[2]]
-                    tvec = move_xyz_along_axis(tvec, q, "x", -0.0828)
                 elif current_id == self.id_front_L:
+                    # move IN 4cm
+                    tvec = tvec[0][0]
+                    tvec = move_xyz_along_axis(tvec, q, "z", -0.04)
                     # angle rotate 135 degrees cw
                     q_rot = [0.3826834, 0, -0.9238795, 0]
-                    q = aa2quat((rvec[0][0]))
                     q = mul_quaternion(q, q_rot)
                     # rotate 90 so z is up
                     q_rot = [0.7071068, 0, 0, 0.7071068]
                     q = mul_quaternion(q, q_rot)
-                    # move backward 5.94cm, right 5.94cm
-                    tvec = tvec[0][0]
-                    # tvec = [tvec[0] - 0.0594, tvec[1], tvec[2] + 0.0594]
-                    tvec = move_xyz_along_axis(tvec, q, "x", -0.0594)
-                    tvec = move_xyz_along_axis(tvec, q, "y", 0.0594)
                 elif current_id == self.id_left:
+                    # move IN 4cm
+                    tvec = tvec[0][0]
+                    tvec = move_xyz_along_axis(tvec, q, "z", -0.04)
                     # angle rotate 180 degrees cw
                     q_rot = [0, 0, 1, 0]
                     q = aa2quat(rvec[0][0])
@@ -429,11 +418,10 @@ class HeadTracker:
                     # rotate 90 so z is up
                     q_rot = [0.7071068, 0, 0, 0.7071068]
                     q = mul_quaternion(q, q_rot)
-                    # move right 8.28cm
-                    tvec = tvec[0][0]
-                    # tvec = [tvec[0], tvec[1], tvec[2] + 0.0828]
-                    tvec = move_xyz_along_axis(tvec, q, "y", 0.0828)
                 elif current_id == self.id_back_L:
+                    # move IN 4cm
+                    tvec = tvec[0][0]
+                    tvec = move_xyz_along_axis(tvec, q, "z", -0.04)
                     # angle rotate 135 degrees ccw
                     q_rot = [0.3826834, 0, 0.9238795, 0]
                     q = aa2quat((rvec[0][0]))
@@ -441,11 +429,6 @@ class HeadTracker:
                     # rotate 90 so z is up
                     q_rot = [0.7071068, 0, 0, 0.7071068]
                     q = mul_quaternion(q, q_rot)
-                    # move forward 5.94cm, right 5.94cm
-                    tvec = tvec[0][0]
-                    # tvec = [tvec[0] + 0.0594, tvec[1], tvec[2] + 0.0594]
-                    tvec = move_xyz_along_axis(tvec, q, "x", 0.0594)
-                    tvec = move_xyz_along_axis(tvec, q, "y", 0.0594)
                 else:
                     q = self.last_q
                     tvec = self.last_tvec
@@ -520,9 +503,9 @@ class HeadTracker:
         # display frame
         self.pubIm.publish(bridge.cv2_to_imgmsg(frame, encoding="passthrough"))
 
-        t = move_xyz_along_axis(tvec, q, "y", 0.5)
-        br = tf.TransformBroadcaster()
-        br.sendTransform(t, q, rospy.Time.now(), "/new", self.parent_link)
+        # t = move_xyz_along_axis(tvec, q, "y", 0.5)
+        # br = tf.TransformBroadcaster()
+        # br.sendTransform(t, q, rospy.Time.now(), "/new", self.parent_link)
 
     def average_poses(self):
         t5 = time.time()
@@ -614,7 +597,7 @@ def head_track():
     parent_link = "/camera_link_2"
 
     # eye-position
-    eye_height = -0.17
+    eye_height = -0.20
     eye_depth = 0.13
 
     # averaging
