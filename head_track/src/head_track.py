@@ -192,8 +192,11 @@ def average_orientation(q_list, rej_factor=1, axis=3):
         return quatWAvgMarkley(q_list_filtered)
 
 
-def move_xyz_along_axis(xyz, orientation, axis, distance):
-    orientation = euler_from_quaternion(orientation)
+# This is mostly working, so im just going to leave it
+# close enough for now.
+def move_xyz_along_axis(xyz, q_orientation, axis, distance):
+    xyz = copy.deepcopy(xyz)
+    orientation = euler_from_quaternion(copy.deepcopy(q_orientation))
     if axis == "X" or axis == 'x':
         # depends on pitch & yaw
         if np.cos(orientation[1]) < np.cos(orientation[2]):
@@ -206,26 +209,26 @@ def move_xyz_along_axis(xyz, orientation, axis, distance):
         xyz[2] -= distance * np.sin(orientation[1])
         return xyz
     elif axis == "Y" or axis == 'y':
-        # depends on yaw
-        xyz[0] += distance * np.sin(orientation[2])
-        # depends on yaw & roll
-        if np.cos(orientation[0]) < np.cos(orientation[2]):
+        # depends on pitch??
+        xyz[0] += distance * np.sin(orientation[1])
+        # depends on yaw & pitch??
+        if np.cos(orientation[0]) < np.cos(orientation[1]):
             xyz[1] += distance * np.cos(orientation[0])
         else:
-            xyz[1] += distance * np.cos(orientation[2])
+            xyz[1] += distance * np.cos(orientation[1])
         # depends on roll
         xyz[2] += distance * np.sin(orientation[0])
         return xyz
     elif axis == "Z" or axis == 'z':
-        # depends on pitch
-        xyz[0] += distance * np.sin(orientation[1])
-        # depends on roll
-        xyz[1] += distance * np.sin(orientation[0])
-        # depends on roll & pitch
-        if np.cos(orientation[0]) < np.cos(orientation[1]):
+        # depends on yaw?
+        xyz[0] += distance * np.sin(orientation[2])
+        # depends on roll \ also minus?
+        xyz[1] -= distance * np.sin(orientation[0])
+        # depends on roll & yaw?
+        if np.cos(orientation[0]) < np.cos(orientation[2]):
             xyz[2] += distance * np.cos(orientation[0])
         else:
-            xyz[2] += distance * np.cos(orientation[1])
+            xyz[2] += distance * np.cos(orientation[2])
         return xyz
     else:
         return xyz
@@ -346,86 +349,112 @@ class HeadTracker:
                 cv2.aruco.drawAxis(frame, self.camera_matrix, self.camera_distortion, rvec, tvec, self.marker_size / 2)
                 # ----------------------------------------------------------- #
                 #   NOTE:   angles here are applied to y instead of z         #
-                #           due to an issue on my end where everything is     #
-                #           rotated 90 degrees.                               #
+                #           but we later flip everything so don't             #
+                #           worry about it                                    #
                 # ----------------------------------------------------------- #
                 # I used https://www.andre-gaschler.com/rotationconverter/ to get quaternion rot values
-                # TODO: find way to translate marker xyz to center of 'headset'
                 current_id = ids[i]
                 if current_id == self.id_back:
                     # adjust angle 90 degrees ccw
                     q_rot = [0.7071068, 0, 0.7071068, 0]
                     q = aa2quat((rvec[0][0]))
                     q = mul_quaternion(q, q_rot)
+                    # rotate 90 so z is up
+                    q_rot = [0.7071068, 0, 0, 0.7071068]
+                    q = mul_quaternion(q, q_rot)
                     # move forward 8.28cm
                     tvec = tvec[0][0]
-                    tvec = [tvec[0] + 0.0828, tvec[1], tvec[2]]
+                    # tvec = [tvec[0] + 0.0828, tvec[1], tvec[2]]
+                    tvec = move_xyz_along_axis(tvec, q, "x", 0.0828)
                 elif current_id == self.id_back_R:
                     # adjust angle 45 degrees ccw
                     q_rot = [0.9238795, 0, 0.3826834, 0]
                     q = aa2quat((rvec[0][0]))
                     q = mul_quaternion(q, q_rot)
+                    # rotate 90 so z is up
+                    q_rot = [0.7071068, 0, 0, 0.7071068]
+                    q = mul_quaternion(q, q_rot)
                     # move forward 5.94cm, left 5.94cm
                     tvec = tvec[0][0]
-                    tvec = [tvec[0] + 0.0594, tvec[1], tvec[2] - 0.0594]
-                    # tvec = move_xyz_along_axis(tvec, q, "x", +0.0594)
-                    # tvec = move_xyz_along_axis(tvec, q, "y", -0.0594)
+                    # tvec = [tvec[0] + 0.0594, tvec[1], tvec[2] - 0.0594]
+                    tvec = move_xyz_along_axis(tvec, q, "x", 0.0594)
+                    tvec = move_xyz_along_axis(tvec, q, "y", 0.0594)
                 elif current_id == self.id_right:
                     # angle is good
                     # move left 8.28cm
                     q = aa2quat(rvec[0][0])
+                    # rotate 90 so z is up
+                    q_rot = [0.7071068, 0, 0, 0.7071068]
+                    q = mul_quaternion(q, q_rot)
                     tvec = tvec[0][0]
-                    tvec = [tvec[0], tvec[1], tvec[2] - 0.0828]
-                    # tvec = move_xyz_along_axis(tvec, q, "z", -0.0828)  # -0.0828)
+                    # tvec = [tvec[0], tvec[1], tvec[2] - 0.0828]
+                    tvec = move_xyz_along_axis(tvec, q, "y", 0.0828)
                 elif current_id == self.id_front_R:
                     # angle rotate 45 degrees cw
                     q_rot = [0.9238795, 0, -0.3826834, 0]  # q_rot = [0, 0.3826834, 0, 0.9238795]
                     q = aa2quat((rvec[0][0]))
                     q = mul_quaternion(q, q_rot)
+                    # rotate 90 so z is up
+                    q_rot = [0.7071068, 0, 0, 0.7071068]
+                    q = mul_quaternion(q, q_rot)
                     # move backward 5.94cm, left 5.94cm
                     tvec = tvec[0][0]
-                    tvec = [tvec[0] - 0.0594, tvec[1], tvec[2] - 0.0594]
-                    # tvec = move_xyz_along_axis(tvec, q, "x", -0.0594)
-                    # tvec = move_xyz_along_axis(tvec, q, "y", -0.0594)
+                    # tvec = [tvec[0] - 0.0594, tvec[1], tvec[2] - 0.0594]
+                    tvec = move_xyz_along_axis(tvec, q, "x", -0.0594)
+                    tvec = move_xyz_along_axis(tvec, q, "y", 0.0594)
                 elif current_id == self.id_front:
                     # adjust angle 90 degrees cw
                     q_rot = [0.7071068, 0, -0.7071068, 0]
                     q = aa2quat((rvec[0][0]))
                     q = mul_quaternion(q, q_rot)
+                    # rotate 90 so z is up
+                    q_rot = [0.7071068, 0, 0, 0.7071068]
+                    q = mul_quaternion(q, q_rot)
                     # move backward 8.28cm
                     tvec = tvec[0][0]
-                    tvec = [tvec[0] - 0.0828, tvec[1], tvec[2]]
+                    # tvec = [tvec[0] - 0.0828, tvec[1], tvec[2]]
+                    tvec = move_xyz_along_axis(tvec, q, "x", -0.0828)
                 elif current_id == self.id_front_L:
                     # angle rotate 135 degrees cw
                     q_rot = [0.3826834, 0, -0.9238795, 0]
                     q = aa2quat((rvec[0][0]))
                     q = mul_quaternion(q, q_rot)
+                    # rotate 90 so z is up
+                    q_rot = [0.7071068, 0, 0, 0.7071068]
+                    q = mul_quaternion(q, q_rot)
                     # move backward 5.94cm, right 5.94cm
                     tvec = tvec[0][0]
-                    tvec = [tvec[0] - 0.0594, tvec[1], tvec[2] + 0.0594]
+                    # tvec = [tvec[0] - 0.0594, tvec[1], tvec[2] + 0.0594]
+                    tvec = move_xyz_along_axis(tvec, q, "x", -0.0594)
+                    tvec = move_xyz_along_axis(tvec, q, "y", -0.0594)
                 elif current_id == self.id_left:
                     # angle rotate 180 degrees cw
                     q_rot = [0, 0, 1, 0]
                     q = aa2quat(rvec[0][0])
                     q = mul_quaternion(q, q_rot)
-                    # move left 8.28cm
+                    # rotate 90 so z is up
+                    q_rot = [0.7071068, 0, 0, 0.7071068]
+                    q = mul_quaternion(q, q_rot)
+                    # move right 8.28cm
                     tvec = tvec[0][0]
-                    tvec = [tvec[0], tvec[1], tvec[2] + 0.0828]
+                    # tvec = [tvec[0], tvec[1], tvec[2] + 0.0828]
+                    tvec = move_xyz_along_axis(tvec, q, "y", -0.0828)
                 elif current_id == self.id_back_L:
                     # angle rotate 135 degrees ccw
                     q_rot = [0.3826834, 0, 0.9238795, 0]
                     q = aa2quat((rvec[0][0]))
                     q = mul_quaternion(q, q_rot)
+                    # rotate 90 so z is up
+                    q_rot = [0.7071068, 0, 0, 0.7071068]
+                    q = mul_quaternion(q, q_rot)
                     # move forward 5.94cm, right 5.94cm
                     tvec = tvec[0][0]
-                    tvec = [tvec[0] + 0.0594, tvec[1], tvec[2] + 0.0594]
+                    # tvec = [tvec[0] + 0.0594, tvec[1], tvec[2] + 0.0594]
+                    tvec = move_xyz_along_axis(tvec, q, "x", 0.0594)
+                    tvec = move_xyz_along_axis(tvec, q, "y", -0.0594)
                 else:
                     q = self.last_q
                     tvec = self.last_tvec
-                # TODO: I think this is right so leave it alone for now, but if you run into issues be sure to
-                #  investigate this
-                # SWAP Y and Z for Scooter
-                # q = [q[0], q[2], q[1], q[3]]
 
                 self.last_q = copy.deepcopy(q)
                 self.last_tvec = copy.deepcopy(tvec)
@@ -497,6 +526,10 @@ class HeadTracker:
         # display frame
         self.pubIm.publish(bridge.cv2_to_imgmsg(frame, encoding="passthrough"))
 
+        # t = move_xyz_along_axis(tvec, q, "y", 0.5)
+        # br = tf.TransformBroadcaster()
+        # br.sendTransform(t, q, rospy.Time.now(), "/new", self.parent_link)
+
     def average_poses(self):
         t5 = time.time()
         # add most recent pose to array of poses
@@ -562,7 +595,7 @@ class HeadTracker:
         br.sendTransform(t, q, rospy.Time.now(), "/tracking_markers", self.parent_link)
 
         # move down x cm and forward x cm
-        t = [self.eye_depth, self.eye_height, 0]
+        t = [self.eye_depth, 0, self.eye_height]
         q = [0, 0, 0, 1]
         br.sendTransform(t, q, rospy.Time.now(), "/laser_origin", "/tracking_markers")
         # br.sendTransform(t, q, rospy.Time.now(), frame, self.parent_link)
@@ -587,8 +620,8 @@ def head_track():
     parent_link = "/camera_link_2"
 
     # eye-position
-    eye_height = -0.15
-    eye_depth = 0.15
+    eye_height = -0.17
+    eye_depth = 0.13
 
     # averaging
     n_previous_marker = 8
