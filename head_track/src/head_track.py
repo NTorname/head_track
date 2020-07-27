@@ -196,42 +196,36 @@ def average_orientation(q_list, rej_factor=1, axis=3):
 # close enough for now.
 def move_xyz_along_axis(xyz, q_orientation, axis, distance):
     xyz = copy.deepcopy(xyz)
-    orientation = euler_from_quaternion(copy.deepcopy(q_orientation))
-    if axis == "X" or axis == 'x':
-        # depends on pitch & yaw
-        if np.cos(orientation[1]) < np.cos(orientation[2]):
-            xyz[0] += distance * np.cos(orientation[1])
-        else:
-            xyz[0] += distance * np.cos(orientation[2])
-        # depends on yaw
-        xyz[1] += distance * np.sin(orientation[2])
-        # depends on pitch
-        xyz[2] -= distance * np.sin(orientation[1])
-        return xyz
-    elif axis == "Y" or axis == 'y':
-        # depends on pitch??
-        xyz[0] += distance * np.sin(orientation[1])
-        # depends on yaw & pitch??
-        if np.cos(orientation[0]) < np.cos(orientation[1]):
-            xyz[1] += distance * np.cos(orientation[0])
-        else:
-            xyz[1] += distance * np.cos(orientation[1])
-        # depends on roll
-        xyz[2] += distance * np.sin(orientation[0])
-        return xyz
-    elif axis == "Z" or axis == 'z':
-        # depends on yaw?
-        xyz[0] += distance * np.sin(orientation[2])
-        # depends on roll \ also minus?
-        xyz[1] -= distance * np.sin(orientation[0])
-        # depends on roll & yaw?
-        if np.cos(orientation[0]) < np.cos(orientation[2]):
-            xyz[2] += distance * np.cos(orientation[0])
-        else:
-            xyz[2] += distance * np.cos(orientation[2])
-        return xyz
-    else:
-        return xyz
+    q_orientation = copy.deepcopy(q_orientation)
+    # x += cos(xy_angle) yaw
+    # y += sin(xy_angle) yaw
+
+    # x += cos(xz_angle) pitch
+    # z += sin(xz_angle) pitch
+
+    # y += cos(yz_angle) roll
+    # z += sin(yz_angle) roll
+
+    if axis == "y" or axis == "Y":
+        q_rot = [0, 0, 0.7071068, 0.7071068]
+        q_orientation = mul_quaternion(q_orientation, q_rot)
+    elif axis == "z" or axis == "z":
+        q_rot = [ 0, 0.7071068, 0, 0.7071068]
+        q_orientation = mul_quaternion(q_orientation, q_rot)
+
+    euler_angle = euler_from_quaternion(q_orientation)
+    xy_angle = euler_angle[2]
+    xz_angle = euler_angle[1]
+    yz_angle = euler_angle[0]
+
+    # x
+    xyz[0] += distance * np.cos(xy_angle) if np.cos(xy_angle) < np.cos(xz_angle) else distance * np.cos(xz_angle)
+    # y
+    xyz[1] += distance * np.sin(xy_angle)  # if np.sin(xy_angle) < np.sin(yz_angle) else distance * np.sin(yz_angle)
+    # z
+    xyz[2] -= distance * np.sin(xz_angle)  # if np.sin(xz_angle) < np.cos(yz_angle) else distance * np.cos(yz_angle)
+    return xyz
+
 
 
 class HeadTracker:
@@ -378,7 +372,7 @@ class HeadTracker:
                     tvec = tvec[0][0]
                     # tvec = [tvec[0] + 0.0594, tvec[1], tvec[2] - 0.0594]
                     tvec = move_xyz_along_axis(tvec, q, "x", 0.0594)
-                    tvec = move_xyz_along_axis(tvec, q, "y", 0.0594)
+                    tvec = move_xyz_along_axis(tvec, q, "y", -0.0594)
                 elif current_id == self.id_right:
                     # angle is good
                     # move left 8.28cm
@@ -388,7 +382,7 @@ class HeadTracker:
                     q = mul_quaternion(q, q_rot)
                     tvec = tvec[0][0]
                     # tvec = [tvec[0], tvec[1], tvec[2] - 0.0828]
-                    tvec = move_xyz_along_axis(tvec, q, "y", 0.0828)
+                    tvec = move_xyz_along_axis(tvec, q, "y", -0.0828)
                 elif current_id == self.id_front_R:
                     # angle rotate 45 degrees cw
                     q_rot = [0.9238795, 0, -0.3826834, 0]  # q_rot = [0, 0.3826834, 0, 0.9238795]
@@ -401,7 +395,7 @@ class HeadTracker:
                     tvec = tvec[0][0]
                     # tvec = [tvec[0] - 0.0594, tvec[1], tvec[2] - 0.0594]
                     tvec = move_xyz_along_axis(tvec, q, "x", -0.0594)
-                    tvec = move_xyz_along_axis(tvec, q, "y", 0.0594)
+                    tvec = move_xyz_along_axis(tvec, q, "y", -0.0594)
                 elif current_id == self.id_front:
                     # adjust angle 90 degrees cw
                     q_rot = [0.7071068, 0, -0.7071068, 0]
@@ -426,7 +420,7 @@ class HeadTracker:
                     tvec = tvec[0][0]
                     # tvec = [tvec[0] - 0.0594, tvec[1], tvec[2] + 0.0594]
                     tvec = move_xyz_along_axis(tvec, q, "x", -0.0594)
-                    tvec = move_xyz_along_axis(tvec, q, "y", -0.0594)
+                    tvec = move_xyz_along_axis(tvec, q, "y", 0.0594)
                 elif current_id == self.id_left:
                     # angle rotate 180 degrees cw
                     q_rot = [0, 0, 1, 0]
@@ -438,7 +432,7 @@ class HeadTracker:
                     # move right 8.28cm
                     tvec = tvec[0][0]
                     # tvec = [tvec[0], tvec[1], tvec[2] + 0.0828]
-                    tvec = move_xyz_along_axis(tvec, q, "y", -0.0828)
+                    tvec = move_xyz_along_axis(tvec, q, "y", 0.0828)
                 elif current_id == self.id_back_L:
                     # angle rotate 135 degrees ccw
                     q_rot = [0.3826834, 0, 0.9238795, 0]
@@ -451,7 +445,7 @@ class HeadTracker:
                     tvec = tvec[0][0]
                     # tvec = [tvec[0] + 0.0594, tvec[1], tvec[2] + 0.0594]
                     tvec = move_xyz_along_axis(tvec, q, "x", 0.0594)
-                    tvec = move_xyz_along_axis(tvec, q, "y", -0.0594)
+                    tvec = move_xyz_along_axis(tvec, q, "y", 0.0594)
                 else:
                     q = self.last_q
                     tvec = self.last_tvec
@@ -526,9 +520,9 @@ class HeadTracker:
         # display frame
         self.pubIm.publish(bridge.cv2_to_imgmsg(frame, encoding="passthrough"))
 
-        # t = move_xyz_along_axis(tvec, q, "y", 0.5)
-        # br = tf.TransformBroadcaster()
-        # br.sendTransform(t, q, rospy.Time.now(), "/new", self.parent_link)
+        t = move_xyz_along_axis(tvec, q, "y", 0.5)
+        br = tf.TransformBroadcaster()
+        br.sendTransform(t, q, rospy.Time.now(), "/new", self.parent_link)
 
     def average_poses(self):
         t5 = time.time()
