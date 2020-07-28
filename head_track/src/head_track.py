@@ -197,12 +197,12 @@ def average_orientation(q_list, rej_factor=1, axis=3):
 def move_xyz_along_axis(xyz, q_orientation, axis, distance):
     xyz = copy.deepcopy(xyz)
     q_orientation = copy.deepcopy(q_orientation)
+
+    # notes
     # x += cos(xy_angle) yaw
     # y += sin(xy_angle) yaw
-
     # x += cos(xz_angle) pitch
     # z += sin(xz_angle) pitch
-
     # y += cos(yz_angle) roll
     # z += sin(yz_angle) roll
 
@@ -210,7 +210,7 @@ def move_xyz_along_axis(xyz, q_orientation, axis, distance):
         q_rot = [0, 0, 0.7071068, 0.7071068]
         q_orientation = mul_quaternion(q_orientation, q_rot)
     elif axis == "z" or axis == "z":
-        q_rot = [ 0, 0.7071068, 0, 0.7071068]
+        q_rot = [0, 0.7071068, 0, 0.7071068]
         q_orientation = mul_quaternion(q_orientation, q_rot)
 
     euler_angle = euler_from_quaternion(q_orientation)
@@ -218,14 +218,10 @@ def move_xyz_along_axis(xyz, q_orientation, axis, distance):
     xz_angle = euler_angle[1]
     yz_angle = euler_angle[0]
 
-    # x
     xyz[0] += distance * np.cos(xy_angle) if np.cos(xy_angle) < np.cos(xz_angle) else distance * np.cos(xz_angle)
-    # y
     xyz[1] += distance * np.sin(xy_angle)  # if np.sin(xy_angle) < np.sin(yz_angle) else distance * np.sin(yz_angle)
-    # z
     xyz[2] -= distance * np.sin(xz_angle)  # if np.sin(xz_angle) < np.cos(yz_angle) else distance * np.cos(yz_angle)
     return xyz
-
 
 
 class HeadTracker:
@@ -311,9 +307,9 @@ class HeadTracker:
         self.outPose = geometry_msgs.msg.PoseStamped()
         self.final_pose = def_pose
 
-    def callback(self, rawFrame):
+    def callback(self, raw_frame):
         # capture video camera frame
-        frame = bridge.imgmsg_to_cv2(rawFrame, "bgr8")
+        frame = bridge.imgmsg_to_cv2(raw_frame, "bgr8")
         # grayscale
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         # find aruco markers in that mf image
@@ -326,9 +322,7 @@ class HeadTracker:
 
         # used for averaging
         q_list = []
-        tvec_list_x = []
-        tvec_list_y = []
-        tvec_list_z = []
+        t_list = []
 
         t1 = time.time()
         # if markers were found
@@ -341,11 +335,8 @@ class HeadTracker:
                 # draw the marker and put reference frame
                 cv2.aruco.drawDetectedMarkers(frame, corners)  # , ids)
                 cv2.aruco.drawAxis(frame, self.camera_matrix, self.camera_distortion, rvec, tvec, self.marker_size / 2)
-                # ----------------------------------------------------------- #
-                #   NOTE:   angles here are applied to y instead of z         #
-                #           but we later flip everything so don't             #
-                #           worry about it                                    #
-                # ----------------------------------------------------------- #
+
+                # rotate and move markers depending on their position on the headset
                 # I used https://www.andre-gaschler.com/rotationconverter/ to get quaternion rot values
                 current_id = ids[i]
                 q = aa2quat((rvec[0][0]))
@@ -437,35 +428,30 @@ class HeadTracker:
                 self.last_tvec = copy.deepcopy(tvec)
 
                 # used for averaging
+                # creating lists of xyz's and q's
                 q_list.insert(i, q)
-                tvec_list_x.insert(i, tvec[0])
-                tvec_list_y.insert(i, tvec[1])
-                tvec_list_z.insert(i, tvec[2])
+                t_list.insert(i, [tvec[0],tvec[1],tvec[2]])
             t2 = time.time()
 
             # average orientation and position of all currently viewable markers
             t3 = time.time()
-            # averaging orientation
-            q_list = np.array(q_list)
-            q = average_orientation(q_list, 0.8, 1)  # rej_factor, axis  # 1, 3
-            # averaging position
-            i = 0
-            t_list = []
-            while i < len(ids):
-                t_list.append([tvec_list_x[i], tvec_list_y[i], tvec_list_z[i]])
-                i += 1
-            t_list = np.array(t_list)
-            tvec = average_position(t_list, 100, 0)  # rej_factor, axis
+            if len(ids) > 1:
+                # averaging orientation
+                q_list = np.array(q_list)
+                q = average_orientation(q_list, 0.8, 1)  # rej_factor, axis  # 1, 3
+                # averaging position
+                t_list = np.array(t_list)
+                tvec = average_position(t_list, 100, 0)  # rej_factor, axis
             t4 = time.time()
 
-            # average orientation and position of previous markers
+            # average orientation and position of previous x markers
             t9 = time.time()
+            # average orientation
             self.marker_orient_arr.append(copy.deepcopy(q))
             self.marker_orient_arr = self.marker_orient_arr[1:self.n_avg_previous_marker + 1]
             q_list = np.array(self.marker_orient_arr)
             q = average_orientation(q_list, 0.5, 1)
-
-            # average position of markers with previous markers
+            # average position
             self.marker_pos_arr.append(copy.deepcopy(tvec))
             self.marker_pos_arr = self.marker_pos_arr[1:self.n_avg_previous_marker + 1]
             t_list = np.array(self.marker_pos_arr)
@@ -474,12 +460,10 @@ class HeadTracker:
 
             # assemble pose message
             pose = geometry_msgs.msg.PoseStamped()
-
             header = HeaderMsg()
             header.frame_id = self.parent_link
             header.stamp = rospy.Time.now()
             pose.header = header
-
             pose.pose.position.x = tvec[0]
             pose.pose.position.y = tvec[1]
             pose.pose.position.z = tvec[2]
@@ -487,22 +471,22 @@ class HeadTracker:
             pose.pose.orientation.y = q[1]
             pose.pose.orientation.z = q[2]
             pose.pose.orientation.w = q[3]
-
             self.outPose = pose
 
+            # print time info
             time_message = "Identifying Markers: {} seconds\nProcessing {} Markers: {} seconds\nAveraging {} Markers: " \
                            "{} seconds\nAveraging previous {} marker(s): {} seconds"
             print(time_message.format(t8 - t7, len(ids), t2 - t1, len(ids), t4 - t3, self.n_avg_previous_marker,
                                       t10 - t9))
-            self.t1_4 = (t2 - t1 + t4 - t3 + t10 - t9)
+            self.t1_4 = (t2 - t1 + t4 - t3 + t10 - t9 + t8 - t7)
         else:
-            self.t1_4 = 0
+            self.t1_4 = t8 - t7
             time_message = "Identifying Markers: {} seconds"
             print(time_message.format(t8 - t7))
             print "No Markers detected"
         # display frame
         self.pubIm.publish(bridge.cv2_to_imgmsg(frame, encoding="passthrough"))
-
+        # # test code (ignore)
         # t = move_xyz_along_axis(tvec, q, "y", 0.5)
         # br = tf.TransformBroadcaster()
         # br.sendTransform(t, q, rospy.Time.now(), "/new", self.parent_link)
@@ -542,16 +526,16 @@ class HeadTracker:
         final_pose.pose.orientation.y = q[1]
         final_pose.pose.orientation.z = q[2]
         final_pose.pose.orientation.w = q[3]
+        self.final_pose = final_pose
 
         time_message = "Averaging previous {} pose(s): {} seconds "
         total = "Total time: {} seconds\n"
         print(time_message.format(self.n_avg_previous_pose, t6 - t5))
         print(total.format(self.t1_4 + t6 - t5))
 
-        self.final_pose = final_pose
         self.publish(final_pose)
 
-    def publish(self, pose, frame="/laser_origin"):
+    def publish(self, pose):
         if pose is None:
             pose = self.final_pose
         # publish pose
@@ -567,15 +551,15 @@ class HeadTracker:
         q[1] = pose.pose.orientation.y
         q[2] = pose.pose.orientation.z
         q[3] = pose.pose.orientation.w
+
         br = tf.TransformBroadcaster()
-        # move ray down to shoot from user's eye-line
         br.sendTransform(t, q, rospy.Time.now(), "/tracking_markers", self.parent_link)
 
+        # move ray down to shoot from user's eye-line
         # move down x cm and forward x cm
         t = [self.eye_depth, 0, self.eye_height]
         q = [0, 0, 0, 1]
         br.sendTransform(t, q, rospy.Time.now(), "/laser_origin", "/tracking_markers")
-        # br.sendTransform(t, q, rospy.Time.now(), frame, self.parent_link)
 
 
 def head_track():
@@ -596,8 +580,9 @@ def head_track():
     # parent_link
     parent_link = "/camera_link_2"
 
+    # TODO: customize depending on head
     # eye-position
-    eye_height = -0.20
+    eye_height = -0.18
     eye_depth = 0.13
 
     # averaging
