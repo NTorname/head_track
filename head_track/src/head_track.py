@@ -175,7 +175,7 @@ def average_position(xyz_list, rej_factor, axis):
         return [np.mean(t_list_filtered[:, 0]), np.mean(t_list_filtered[:, 1]), np.mean(t_list_filtered[:, 2])]
 
 
-def average_orientation(q_list, rej_factor=1, axis=3):
+def average_orientation(q_list, rej_factor=1.0, axis=3):
     """
     takes a list of quaternions and returns the average
     :param q_list: list of quaternions
@@ -225,19 +225,18 @@ def move_xyz_along_axis(xyz, q_orientation, axis, distance):
 
 
 class HeadTracker:
-    def __init__(self, marker_size, camera_matrix, camera_distortion, parent_link, eye_height, eye_depth,
-                 n_avg_previous_marker=10, n_avg_previous_pose=12):
+    def __init__(self, marker_size, camera_matrix, camera_distortion, parent_link, eye_height, eye_depth, image_topic,
+                 n_avg_previous_marker=18):
         rospy.init_node('head_tracker', anonymous=True)
-        # TODO: Change to subscribe to image topic published by scooter
-        rospy.Subscriber("/camera/color/image_raw", sensor_msgs.msg.Image, self.callback)
+        rospy.Subscriber(image_topic, sensor_msgs.msg.Image, self.callback)
 
         self.parent_link = parent_link
         self.eye_height = eye_height
         self.eye_depth = eye_depth
 
         # set up image publisher
-        self.pubIm = rospy.Publisher("/detected_frame", sensor_msgs.msg.Image, queue_size=10)
-        self.pubPose = rospy.Publisher("/head_pose", geometry_msgs.msg.PoseStamped, queue_size=10)
+        self.pubIm = rospy.Publisher("/detected_frame", sensor_msgs.msg.Image, queue_size=1)
+        self.pubPose = rospy.Publisher("/head_pose", geometry_msgs.msg.PoseStamped, queue_size=1)
 
         # get camera calibration
         self.camera_matrix = camera_matrix
@@ -261,7 +260,6 @@ class HeadTracker:
 
         # number of previous markers we average with
         # larger number means smoother motion, but trails behind longer
-        # marker orientation
         self.n_avg_previous_marker = n_avg_previous_marker
         self.marker_orient_arr = []
         def_quat = [0, 0, 0, 1]
@@ -269,7 +267,6 @@ class HeadTracker:
         while i < self.n_avg_previous_marker:
             self.marker_orient_arr.insert(i, def_quat)
             i += 1
-        # marker position
         self.marker_pos_arr = []
         def_position = [0, 0, 0]
         i = 0
@@ -277,37 +274,10 @@ class HeadTracker:
             self.marker_pos_arr.insert(i, def_position)
             i += 1
 
-        # number of previous poses we average with
-        # larger number means smoother motion, but trails behind longer
-        self.n_avg_previous_pose = n_avg_previous_pose
-        self.pose_arr = []
-        def_pose = geometry_msgs.msg.PoseStamped()
-        header = HeaderMsg()
-
-        header.frame_id = self.parent_link
-        header.stamp = 0
-        def_pose.header = header
-        def_pose.pose.position.x = 0
-        def_pose.pose.position.y = 0
-        def_pose.pose.position.z = 0
-        def_pose.pose.orientation.x = 0
-        def_pose.pose.orientation.y = 0
-        def_pose.pose.orientation.z = 0
-        def_pose.pose.orientation.w = 1
-        i = 0
-        while i < self.n_avg_previous_pose:
-            self.pose_arr.insert(i, def_pose)
-            i += 1
-
-        self.last_tvec = [0, 0, 0]
-        self.last_q = [0, 0, 0, 1]
-
-        self.t1_4 = 0
-
         self.outPose = geometry_msgs.msg.PoseStamped()
-        self.final_pose = def_pose
 
     def callback(self, raw_frame):
+        t_total_first = time.time()
         # capture video camera frame
         frame = bridge.imgmsg_to_cv2(raw_frame, "bgr8")
         # grayscale
@@ -421,16 +391,13 @@ class HeadTracker:
                     q_rot = [0.7071068, 0, 0, 0.7071068]
                     q = mul_quaternion(q, q_rot)
                 else:
-                    q = self.last_q
-                    tvec = self.last_tvec
-
-                self.last_q = copy.deepcopy(q)
-                self.last_tvec = copy.deepcopy(tvec)
+                    # only in here if detected tag that doesn't belong to list
+                    break
 
                 # used for averaging
                 # creating lists of xyz's and q's
                 q_list.insert(i, q)
-                t_list.insert(i, [tvec[0],tvec[1],tvec[2]])
+                t_list.insert(i, tvec)
             t2 = time.time()
 
             # average orientation and position of all currently viewable markers
@@ -446,16 +413,17 @@ class HeadTracker:
 
             # average orientation and position of previous x markers
             t9 = time.time()
-            # average orientation
-            self.marker_orient_arr.append(copy.deepcopy(q))
-            self.marker_orient_arr = self.marker_orient_arr[1:self.n_avg_previous_marker + 1]
-            q_list = np.array(self.marker_orient_arr)
-            q = average_orientation(q_list, 0.5, 1)
-            # average position
-            self.marker_pos_arr.append(copy.deepcopy(tvec))
-            self.marker_pos_arr = self.marker_pos_arr[1:self.n_avg_previous_marker + 1]
-            t_list = np.array(self.marker_pos_arr)
-            tvec = average_position(t_list, 100, 0)
+            if self.n_avg_previous_marker > 1:
+                # average orientation
+                self.marker_orient_arr.append(copy.deepcopy(q))
+                self.marker_orient_arr = self.marker_orient_arr[1:self.n_avg_previous_marker + 1]
+                q_list = np.array(self.marker_orient_arr)
+                q = average_orientation(q_list, 0.5, 1)
+                # average position
+                self.marker_pos_arr.append(copy.deepcopy(tvec))
+                self.marker_pos_arr = self.marker_pos_arr[1:self.n_avg_previous_marker + 1]
+                t_list = np.array(self.marker_pos_arr)
+                tvec = average_position(t_list, 100, 0)
             t10 = time.time()
 
             # assemble pose message
@@ -474,66 +442,26 @@ class HeadTracker:
             self.outPose = pose
 
             # print time info
-            time_message = "Identifying Markers: {} seconds\nProcessing {} Markers: {} seconds\nAveraging {} Markers: " \
+            time_message = "Identifying Markers: {} seconds\nEstimating {} Poses: {} seconds\nAveraging {} Markers: " \
                            "{} seconds\nAveraging previous {} marker(s): {} seconds"
             print(time_message.format(t8 - t7, len(ids), t2 - t1, len(ids), t4 - t3, self.n_avg_previous_marker,
                                       t10 - t9))
-            self.t1_4 = (t2 - t1 + t4 - t3 + t10 - t9 + t8 - t7)
         else:
-            self.t1_4 = t8 - t7
             time_message = "Identifying Markers: {} seconds"
             print(time_message.format(t8 - t7))
             print "No Markers detected"
         # display frame
         self.pubIm.publish(bridge.cv2_to_imgmsg(frame, encoding="passthrough"))
+
+        self.publish(self.outPose)
+
+        t_total_last = time.time()
+        total = "Total time: {} seconds\n"
+        print(total.format(t_total_last - t_total_first))
         # # test code (ignore)
         # t = move_xyz_along_axis(tvec, q, "y", 0.5)
         # br = tf.TransformBroadcaster()
         # br.sendTransform(t, q, rospy.Time.now(), "/new", self.parent_link)
-
-    def average_poses(self):
-        t5 = time.time()
-        # add most recent pose to array of poses
-        self.pose_arr.append(copy.deepcopy(self.outPose))
-        self.pose_arr = self.pose_arr[1:self.n_avg_previous_pose + 1]
-
-        # average position and orientation of poses
-        q_list = []
-        t_list = []
-        for poses in self.pose_arr:
-            t_list.append([poses.pose.position.x, poses.pose.position.y, poses.pose.position.z])
-            q = [poses.pose.orientation.x, poses.pose.orientation.y, poses.pose.orientation.z, poses.pose.orientation.w]
-            q_list.append(q)
-        # average position
-        t_list = np.array(t_list)
-        tvec = average_position(t_list, 100, 0)  # rej_factor, axis
-        # average orientation
-        q_list = np.array(q_list)
-        q = average_orientation(q_list, 1, 1)
-        # end averaging pose to pose
-        t6 = time.time()
-
-        # assembling pose message
-        final_pose = geometry_msgs.msg.PoseStamped()
-        header = HeaderMsg()
-        header.frame_id = self.parent_link
-        header.stamp = rospy.Time.now()
-        final_pose.header = header
-        final_pose.pose.position.x = tvec[0]
-        final_pose.pose.position.y = tvec[1]
-        final_pose.pose.position.z = tvec[2]
-        final_pose.pose.orientation.x = q[0]
-        final_pose.pose.orientation.y = q[1]
-        final_pose.pose.orientation.z = q[2]
-        final_pose.pose.orientation.w = q[3]
-        self.final_pose = final_pose
-
-        time_message = "Averaging previous {} pose(s): {} seconds "
-        total = "Total time: {} seconds\n"
-        print(time_message.format(self.n_avg_previous_pose, t6 - t5))
-        print(total.format(self.t1_4 + t6 - t5))
-
-        self.publish(final_pose)
 
     def publish(self, pose):
         if pose is None:
@@ -585,18 +513,19 @@ def head_track():
     eye_height = -0.18
     eye_depth = 0.13
 
+    # TODO: set image_topic correctly
+    # image_topic
+    image_topic = "/camera/color/image_raw"
+
     # averaging
-    n_previous_marker = 8
-    n_previous_pose = 10
+    n_previous_marker = 18
 
     # Create object
-    HT = HeadTracker(marker_size, camera_matrix, camera_distortion, parent_link, eye_height, eye_depth,
-                     n_previous_marker, n_previous_pose)
+    HT = HeadTracker(marker_size, camera_matrix, camera_distortion, parent_link, eye_height, eye_depth, image_topic,
+                     n_previous_marker)
 
     rate = rospy.Rate(20.0)
     while not rospy.is_shutdown():
-        # average across previous x poses / and publish
-        HT.average_poses()
         rate.sleep()
 
 
