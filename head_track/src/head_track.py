@@ -504,7 +504,7 @@ def head_track():
     camera_matrix = np.loadtxt(calib_path + 'cameraMatrix.txt', delimiter=',')
     camera_distortion = np.loadtxt(calib_path + 'cameraDistortion.txt', delimiter=',')
 
-    # TODO: switch to /base_link for scooter
+    # TODO: switch to camera tf on scooter
     # parent_link
     parent_link = "/camera_link_2"
 
