@@ -310,89 +310,62 @@ class HeadTracker:
                 # I used https://www.andre-gaschler.com/rotationconverter/ to get quaternion rot values
                 current_id = ids[i]
                 q = aa2quat((rvec[0][0]))
+                tvec = tvec[0][0]
                 if current_id == self.id_back:
                     # move IN 4cm
-                    tvec = tvec[0][0]
                     tvec = move_xyz_along_axis(tvec, q, "z", -0.04)
                     # adjust angle 90 degrees ccw
                     q_rot = [0.7071068, 0, 0.7071068, 0]
                     q = mul_quaternion(q, q_rot)
-                    # rotate 90 so z is up
-                    q_rot = [0.7071068, 0, 0, 0.7071068]
-                    q = mul_quaternion(q, q_rot)
                 elif current_id == self.id_back_R:
                     # move IN 4cm
-                    tvec = tvec[0][0]
                     tvec = move_xyz_along_axis(tvec, q, "z", -0.04)
                     # adjust angle 45 degrees ccw
                     q_rot = [0.9238795, 0, 0.3826834, 0]
                     q = mul_quaternion(q, q_rot)
-                    # rotate 90 so z is up
-                    q_rot = [0.7071068, 0, 0, 0.7071068]
-                    q = mul_quaternion(q, q_rot)
                 elif current_id == self.id_right:
                     # move IN 4cm
-                    tvec = tvec[0][0]
                     tvec = move_xyz_along_axis(tvec, q, "z", -0.04)
                     # angle is good
-                    # rotate 90 so z is up
-                    q_rot = [0.7071068, 0, 0, 0.7071068]
-                    q = mul_quaternion(q, q_rot)
                 elif current_id == self.id_front_R:
                     # move IN 4cm
-                    tvec = tvec[0][0]
                     tvec = move_xyz_along_axis(tvec, q, "z", -0.04)
                     # angle rotate 45 degrees cw
                     q_rot = [0.9238795, 0, -0.3826834, 0]  # q_rot = [0, 0.3826834, 0, 0.9238795]
                     q = mul_quaternion(q, q_rot)
-                    # rotate 90 so z is up
-                    q_rot = [0.7071068, 0, 0, 0.7071068]
-                    q = mul_quaternion(q, q_rot)
                 elif current_id == self.id_front:
                     # move IN 4cm
-                    tvec = tvec[0][0]
                     tvec = move_xyz_along_axis(tvec, q, "z", -0.04)
                     # adjust angle 90 degrees cw
                     q_rot = [0.7071068, 0, -0.7071068, 0]
                     q = mul_quaternion(q, q_rot)
-                    # rotate 90 so z is up
-                    q_rot = [0.7071068, 0, 0, 0.7071068]
-                    q = mul_quaternion(q, q_rot)
                 elif current_id == self.id_front_L:
                     # move IN 4cm
-                    tvec = tvec[0][0]
                     tvec = move_xyz_along_axis(tvec, q, "z", -0.04)
                     # angle rotate 135 degrees cw
                     q_rot = [0.3826834, 0, -0.9238795, 0]
                     q = mul_quaternion(q, q_rot)
-                    # rotate 90 so z is up
-                    q_rot = [0.7071068, 0, 0, 0.7071068]
-                    q = mul_quaternion(q, q_rot)
                 elif current_id == self.id_left:
                     # move IN 4cm
-                    tvec = tvec[0][0]
                     tvec = move_xyz_along_axis(tvec, q, "z", -0.04)
                     # angle rotate 180 degrees cw
                     q_rot = [0, 0, 1, 0]
                     q = aa2quat(rvec[0][0])
                     q = mul_quaternion(q, q_rot)
-                    # rotate 90 so z is up
-                    q_rot = [0.7071068, 0, 0, 0.7071068]
-                    q = mul_quaternion(q, q_rot)
                 elif current_id == self.id_back_L:
                     # move IN 4cm
-                    tvec = tvec[0][0]
                     tvec = move_xyz_along_axis(tvec, q, "z", -0.04)
                     # angle rotate 135 degrees ccw
                     q_rot = [0.3826834, 0, 0.9238795, 0]
                     q = aa2quat((rvec[0][0]))
                     q = mul_quaternion(q, q_rot)
-                    # rotate 90 so z is up
-                    q_rot = [0.7071068, 0, 0, 0.7071068]
-                    q = mul_quaternion(q, q_rot)
                 else:
                     # only in here if detected tag that doesn't belong to list
                     break
+
+                # rotate 90 so z is up
+                q_rot = [0.7071068, 0, 0, 0.7071068]
+                q = mul_quaternion(q, q_rot)
 
                 # used for averaging
                 # creating lists of xyz's and q's
@@ -517,7 +490,7 @@ def head_track():
     # image_topic
     image_topic = "/camera/color/image_raw"
 
-    # averaging
+    # smoothing level (18 seems good, but maybe play with it)
     n_previous_marker = 18
 
     # Create object
