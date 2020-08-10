@@ -95,16 +95,38 @@ def quatWAvgMarkley(Q, weights=None):
     return np.linalg.eigh(A)[1][:, -1]
 
 
+# def quaternion_median(Q, axis=3):
+#     """
+#     sorts list of quaternions based on given axis and returns median
+#     :param Q: (ndarray): an Mx4 ndarray of quaternions.
+#     :param axis: which axis to sort on
+#     returns median quaternion
+#     """
+#     # q_list = Q[:,3]
+#     sorted_arr = Q[Q[:, axis].argsort()]
+#     # print 'sorted q_list: ', sorted_arr
+#     return sorted_arr[len(Q) / 2]
+
 def quaternion_median(Q, axis=3):
-    """
-    sorts list of quaternions based on given axis and returns median
-    :param Q: (ndarray): an Mx4 ndarray of quaternions.
-    :param axis: which axis to sort on
-    returns median quaternion
-    """
-    # q_list = Q[:,3]
-    sorted_arr = Q[Q[:, axis].argsort()]
-    # print 'sorted q_list: ', sorted_arr
+    # add xyzw together
+    # sort that way?
+
+    sort_arr = []
+    sum = 0
+    i = 0
+    while i < len(Q):
+        # go through all q_list
+        sum += Q[i][0] + Q[i][1] + Q[i][2] + Q[i][3]
+        sort_arr.insert(i,sum)
+        sum = 0
+        i += 1
+    #sort q_list by sort_arr?
+    print "Q: ", Q
+    sort_arr = np.array(sort_arr)
+    print "Sort: ", sort_arr
+    sorted_arr = Q[sort_arr.argsort()]
+    print "med_q: ", sorted_arr
+
     return sorted_arr[len(Q) / 2]
 
 
@@ -124,6 +146,8 @@ def quaternion_median(Q, axis=3):
 #     quant3, quant1 = np.percentile(out_list, [75, 25])
 #     iqr = quant3 - quant1
 #     iqrSigma = iqr / 1.34896
+#     # test
+#     out_list = np.abs(out_list)
 #     medData = np.median(out_list)
 #     i = 0
 #     indices_rem = []
@@ -159,7 +183,7 @@ def reject_quaternion_outliers(q_list, factor):
         dif_q = q_list[i]-median_q
         # print 'q: ', q_list[i]
         # print 'median_q: ', median_q
-        # print 'dif_q: ', np.abs((dif_q[0]+dif_q[1]+dif_q[2]+dif_q[3])/4)
+        print 'dif_q: ', np.abs((dif_q[0]+dif_q[1]+dif_q[2]+dif_q[3])/4)
         if np.abs((dif_q[0]+dif_q[1]+dif_q[2]+dif_q[3])/4) < factor:
             # print "^^^"
             indices_rem.append(i)
@@ -167,12 +191,12 @@ def reject_quaternion_outliers(q_list, factor):
 
     q_list_filtered = q_list[indices_rem]
     if len(q_list_filtered) < 1:
-        #print 'REMOVED ALL (in function reject_quaternion_outliers)'
+        print 'REMOVED ALL (in function reject_quaternion_outliers)'
         return None
     else:
-        # print 'len of q_list_filtered: ', len(q_list_filtered)
-        # print 'REMOVED: ', (len(q_list) - len(q_list_filtered))
-        # print str(len(q_list_filtered)) + '/' + str(len(q_list))
+        print 'len of q_list_filtered: ', len(q_list_filtered)
+        print 'REMOVED: ', (len(q_list) - len(q_list_filtered))
+        print str(len(q_list_filtered)) + '/' + str(len(q_list))
         return np.array(q_list_filtered)
 
 
@@ -534,7 +558,7 @@ def head_track():
     # the less the users moves their head the less annoying the 'lag' will be
     # and having smooth stable position is important if we are using that as a basis
     # for the eye-tracking
-    n_previous_marker = 20 #30 #12
+    n_previous_marker = 30 #30 #12
 
     # Create object
     HT = HeadTracker(marker_size, camera_matrix, camera_distortion, parent_link, eye_height, eye_depth, image_topic,
