@@ -21,6 +21,7 @@ from cv_bridge import CvBridge
 # set up link between ros topics and opencv
 bridge = CvBridge()
 
+test_val = 0
 
 def aa2quat(aa):
     """
@@ -34,7 +35,7 @@ def aa2quat(aa):
     return [axis[0] * np.sin(angle_2), axis[1] * np.sin(angle_2), axis[2] * np.sin(angle_2), np.cos(angle_2)]
 
 
-def reject_outliers(data_in, factor=0.8):
+def reject_outliers(data_in, factor=0.8*test_val):
     """
     takes a list of data and removes outliers
     :param data_in: raw data []
@@ -107,33 +108,66 @@ def quaternion_median(Q, axis=3):
     return sorted_arr[len(Q) / 2]
 
 
-def reject_quaternion_outliers(q_list, factor, axis=3):
+# def reject_quaternion_outliers(q_list, factor, axis=3):
+#     """
+#     removes outliers from a list of quaternions based on given axis
+#     :param q_list: (ndarray): an Mx4 ndarray of quaternions.
+#     :param factor: determines how strictly outliers are removed
+#     :param axis: which axis to based outlier removal on
+#     returns list of quaternions - outliers
+#     if all list items are 'Outliers' and removed then return None
+#     """
+#     q_list = np.array(q_list)
+#     # check for outliers along w - rem any outliers we can from that information
+#     factor = factor
+#     out_list = q_list[:, axis]
+#     quant3, quant1 = np.percentile(out_list, [75, 25])
+#     iqr = quant3 - quant1
+#     iqrSigma = iqr / 1.34896
+#     medData = np.median(out_list)
+#     i = 0
+#     indices_rem = []
+#     while i < len(out_list):
+#         print 'low: ', medData - factor * iqrSigma
+#         print 'high: ', medData + factor * iqrSigma
+#         print 'val: ', out_list[i]
+#         if not (medData - factor * iqrSigma < out_list[i] < medData + factor * iqrSigma):
+#             indices_rem.append(i)
+#         i += 1
+#
+#     q_list_filtered = q_list[indices_rem]
+#     if len(q_list_filtered) < 1:
+#         print 'REMOVED ALL'
+#         return None
+#     else:
+#         print 'len of q_list_filtered: ', len(q_list_filtered)
+#         print 'REMOVED: ', (len(q_list) - len(q_list_filtered))
+#         print str(len(q_list_filtered)) + '/' + str(len(q_list))
+#         return np.array(q_list_filtered)
+
+def reject_quaternion_outliers(q_list, factor):
     """
-    removes outliers from a list of quaternions based on given axis
-    :param q_list: (ndarray): an Mx4 ndarray of quaternions.
-    :param factor: determines how strictly outliers are removed
-    :param axis: which axis to based outlier removal on
-    returns list of quaternions - outliers
-    if all list items are 'Outliers' and removed then return None
+    removes outliers from a list of quaternions based similarity of products
     """
-    q_list = np.array(q_list)
-    # check for outliers along w - rem any outliers we can from that information
-    factor = factor
-    out_list = q_list[:, axis]
-    quant3, quant1 = np.percentile(out_list, [75, 25])
-    iqr = quant3 - quant1
-    iqrSigma = iqr / 1.34896
-    medData = np.median(out_list)
+    # make median of list of quats
+    # compare median to all with product
+    # if outside some threshold rem that one
+    median_q = quaternion_median(q_list,3)
     i = 0
-    indices_rem = []
-    while i < len(out_list):
-        if medData - factor * iqrSigma < out_list[i] < medData + factor * iqrSigma:
+    indices_rem = [] # indices we keep (NOT OUTLIERS)
+    while i < len(q_list):
+        dif_q = q_list[i]-median_q
+        # print 'q: ', q_list[i]
+        # print 'median_q: ', median_q
+        # print 'dif_q: ', np.abs((dif_q[0]+dif_q[1]+dif_q[2]+dif_q[3])/4)
+        if np.abs((dif_q[0]+dif_q[1]+dif_q[2]+dif_q[3])/4) < factor:
+            # print "^^^"
             indices_rem.append(i)
         i += 1
 
     q_list_filtered = q_list[indices_rem]
     if len(q_list_filtered) < 1:
-        # print 'REMOVED ALL'
+        #print 'REMOVED ALL (in function reject_quaternion_outliers)'
         return None
     else:
         # print 'len of q_list_filtered: ', len(q_list_filtered)
@@ -184,7 +218,7 @@ def average_orientation(q_list, rej_factor=1.0, axis=3):
     returns average quaternion
     if all list items are 'Outliers' and removed then return median quaternion
     """
-    q_list_filtered = reject_quaternion_outliers(q_list, rej_factor, axis)
+    q_list_filtered = reject_quaternion_outliers(q_list, rej_factor)
     # if all data is removed from removing outliers we take median value
     if q_list_filtered is None:
         return quaternion_median(q_list)
@@ -378,7 +412,7 @@ class HeadTracker:
             if len(ids) > 1:
                 # averaging orientation
                 q_list = np.array(q_list)
-                q = average_orientation(q_list, 0.8, 1)  # rej_factor, axis  # 1, 3
+                q = average_orientation(q_list, 0.5)  # rej_factor, axis  # 1, 3
                 # averaging position
                 t_list = np.array(t_list)
                 tvec = average_position(t_list, 100, 0)  # rej_factor, axis
@@ -391,7 +425,7 @@ class HeadTracker:
                 self.marker_orient_arr.append(copy.deepcopy(q))
                 self.marker_orient_arr = self.marker_orient_arr[1:self.n_avg_previous_marker + 1]
                 q_list = np.array(self.marker_orient_arr)
-                q = average_orientation(q_list, 0.5, 1)
+                q = average_orientation(q_list, 0.5)
                 # average position
                 self.marker_pos_arr.append(copy.deepcopy(tvec))
                 self.marker_pos_arr = self.marker_pos_arr[1:self.n_avg_previous_marker + 1]
@@ -461,6 +495,11 @@ class HeadTracker:
         t = [self.eye_depth, 0, self.eye_height]
         q = [0, 0, 0, 1]
         br.sendTransform(t, q, rospy.Time.now(), "/laser_origin", "/tracking_markers")
+        q_rot = [ 0.5, 0.5, 0.5, 0.5 ]
+        q = mul_quaternion(q, q_rot)
+        q_rot = [-0.9961947, -0.0871557, 0, 0]
+        q = mul_quaternion(q, q_rot)
+        br.sendTransform(t, q, rospy.Time.now(), "/usb_cam", "/tracking_markers")
 
 
 def head_track():
@@ -483,15 +522,19 @@ def head_track():
 
     # TODO: customize depending on head
     # eye-position
-    eye_height = -0.18
-    eye_depth = 0.13
+    eye_height = -0.11
+    eye_depth = 0.08
 
     # TODO: set image_topic correctly
     # image_topic
     image_topic = "/camera/color/image_raw"
 
-    # smoothing level (18 seems good, but maybe play with it)
-    n_previous_marker = 18
+    # smoothing level (18 seems good, but maybe lower is possible)
+    # eventually when we test w/ eye-tracking this cloud be potentially higher
+    # the less the users moves their head the less annoying the 'lag' will be
+    # and having smooth stable position is important if we are using that as a basis
+    # for the eye-tracking
+    n_previous_marker = 20 #30 #12
 
     # Create object
     HT = HeadTracker(marker_size, camera_matrix, camera_distortion, parent_link, eye_height, eye_depth, image_topic,
