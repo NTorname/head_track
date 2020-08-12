@@ -282,6 +282,9 @@ class HeadTracker:
         self.id_front_L = 18
         self.id_left = 10
 
+        self.last_q = [0, 0, 0, 1]
+        self.last_t = [0, 0, 0]
+
         # number of previous markers we average with
         # larger number means smoother motion, but trails behind longer
         self.n_avg_previous_marker = n_avg_previous_marker
@@ -318,7 +321,6 @@ class HeadTracker:
         q_list = []
         t_list = []
 
-        not_our_marker = False
 
         t1 = time.time()
         # if markers were found
@@ -329,7 +331,7 @@ class HeadTracker:
                                                                                 self.camera_matrix,
                                                                                 self.camera_distortion)
                 # draw the marker and put reference frame
-                cv2.aruco.drawDetectedMarkers(frame, corners)   # , ids)
+                cv2.aruco.drawDetectedMarkers(frame, corners, ids)
                 cv2.aruco.drawAxis(frame, self.camera_matrix, self.camera_distortion, rvec, tvec, self.marker_size / 2)
 
                 # rotate and move markers depending on their position on the headset
@@ -388,18 +390,28 @@ class HeadTracker:
                     q = mul_quaternion(q, q_rot)
                 else:
                     # only in here if detected tag that doesn't belong to list
-                    not_our_marker = True
-
-                if not (not_our_marker):
+                    q = self.last_q
+                    tvec = self.last_t
                     # rotate 90 so z is up
                     q_rot = [0.7071068, 0, 0, 0.7071068]
                     q = mul_quaternion(q, q_rot)
-
                     # used for averaging
                     # creating lists of xyz's and q's
-                    q_list.insert(i, q)
-                    t_list.insert(i, tvec)
-                not_our_marker = False
+                    q_list.append(q)
+                    t_list.append(tvec)
+                    break
+
+                self.last_q = q
+                self.last_t = tvec
+
+                # rotate 90 so z is up
+                q_rot = [0.7071068, 0, 0, 0.7071068]
+                q = mul_quaternion(q, q_rot)
+                # used for averaging
+                # creating lists of xyz's and q's
+                q_list.append(q)
+                t_list.append(tvec)
+
             t2 = time.time()
 
             # average orientation and position of all currently viewable markers
@@ -527,11 +539,11 @@ def head_track():
     image_topic = "/camera/color/image_raw"
 
     # smoothing level (18 seems good, but maybe lower is possible)
-    # eventually when we test w/ eye-tracking this cloud be potentially higher
+    # eventually when we test w/ eye-tracking this could be potentially higher
     # the less the users moves their head the less annoying the 'lag' will be
     # and having smooth stable position is important if we are using that as a basis
     # for the eye-tracking
-    n_previous_marker = 20 #30 #12
+    n_previous_marker = 15 #30 #12
 
     # Create object
     HT = HeadTracker(marker_size, camera_matrix, camera_distortion, parent_link, eye_height, eye_depth, image_topic,
