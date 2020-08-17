@@ -369,7 +369,45 @@ def reject_quaternion_outliers(q_list, factor):
         return np.array(q_list_filtered)
 
 
-def average_position(xyz_list, rej_factor, axis):
+# def reject_quaternion_outliers(q_list, factor):
+#     """
+#     removes outliers from a list of quaternions based similarity of products
+#     """
+#     # make median of list of quats
+#     # compare median to all with product
+#     # if outside some threshold rem that one
+#
+#     # TODO - check this change
+#     #avg_q = quatWAvgMarkley(q_list)
+#     avg_q = avg_quat_sam(q_list)
+#
+#     axis = 0
+#     while axis <= 3:
+#         i = 0
+#         indices_rem = []  # indices we keep (NOT OUTLIERS)
+#         while i < len(q_list):
+#             dif_q = q_list[i][axis] - avg_q[axis]
+#             # print 'q: ', q_list[i]
+#             # print 'median_q: ', median_q
+#             print 'dif_q: ', np.abs((dif_q[0]+dif_q[1]+dif_q[2]+dif_q[3])/4)
+#             if np.abs((dif_q[0] + dif_q[1] + dif_q[2] + dif_q[3]) / 4) < factor:
+#                 # print "^^^"
+#                 indices_rem.append(i)
+#             i += 1
+#         q_list_filtered = q_list[indices_rem]
+#         axis += 1
+#
+#     if len(q_list_filtered) < 1:
+#         # print 'REMOVED ALL (in function reject_quaternion_outliers)'
+#         return None
+#     else:
+#         # print 'len of q_list_filtered: ', len(q_list_filtered)
+#         # print 'REMOVED: ', (len(q_list) - len(q_list_filtered))
+#         # print str(len(q_list_filtered)) + '/' + str(len(q_list))
+#         return np.array(q_list_filtered)
+
+
+def average_position(xyz_list, rej_factor):
     # look at x, rem some from list
     # look at y, same
     # look at z, same
@@ -377,25 +415,51 @@ def average_position(xyz_list, rej_factor, axis):
 
     t_list = np.array(xyz_list)
 
-    avg_xyz = [np.average(xyz_list[0]), np.average(xyz_list[1]), np.average(xyz_list[2])]
-
+    avg_xyz = [np.average(xyz_list[:,0]), np.average(xyz_list[:,1]), np.average(xyz_list[:,2])]
     # print 't_list: ', t_list
 
     axis = 0
-    while axis <= 2:
-        # if avg x - current x < rej then keep
-        indices_rem = []
-        i = 0
-        while i < len(t_list):
-            dif_t = np.abs(avg_xyz[axis] - t_list[i][axis])
-            # print 'x: ', t_list[i][axis]
-            # print 'avgx: ', avg_xyz[axis]
-            # print 'dif_t: ', dif_t
-            if dif_t < rej_factor:
-                indices_rem.append(i)
-            i += 1
-        t_list_filtered = t_list[indices_rem]
-        axis += 1
+    # if avg x - current x < rej then keep
+    indices_rem = []
+    i = 0
+    while i < len(t_list):
+        dif_t = np.abs(avg_xyz[axis] - t_list[i][axis])
+        # print 'x: ', t_list[i][axis]
+        # print 'avgx: ', avg_xyz[axis]
+        print 'dif_tx: ', dif_t
+        if dif_t < rej_factor:
+            indices_rem.append(i)
+        i += 1
+    t_list_filtered = t_list[indices_rem]
+    print 't_list_filtered  : ', t_list_filtered
+
+    axis = 1
+    indices_rem = []
+    i = 0
+    while i < len(t_list_filtered):
+        dif_t = np.abs(avg_xyz[axis] - t_list[i][axis])
+        # print 'x: ', t_list[i][axis]
+        # print 'avgx: ', avg_xyz[axis]
+        print 'dif_ty: ', dif_t
+        if dif_t < rej_factor:
+            indices_rem.append(i)
+        i += 1
+    t_list_filtered = t_list_filtered[indices_rem]
+    print 't_list_filtered  : ', t_list_filtered
+
+    axis = 2
+    indices_rem = []
+    i = 0
+    while i < len(t_list_filtered):
+        dif_t = np.abs(avg_xyz[axis] - t_list[i][axis])
+        # print 'x: ', t_list[i][axis]
+        # print 'avgx: ', avg_xyz[axis]
+        print 'dif_tz: ', dif_t
+        if dif_t < rej_factor:
+            indices_rem.append(i)
+        i += 1
+    t_list_filtered = t_list_filtered[indices_rem]
+    print 't_list_filtered  : ', t_list_filtered
 
     # print "t-list: ", xyz_list
     # print "clean: ", t_list_filtered
@@ -593,13 +657,13 @@ class HeadTracker:
                 # averaging orientation
                 q_list = np.array(q_list)
                 # TODO check this
-                #q = average_orientation(q_list, 0.7)  # rej_factor, axis  # 1, 3
-                q = avg_quat_sam(q_list)
+                q = average_orientation(q_list, 0.7)  # rej_factor, axis  # 1, 3
+                # q = avg_quat_sam(q_list)
                 # q = quatWAvgMarkley(q_list)
                 # q = quaternion_median(q_list)
                 # averaging position
                 t_list = np.array(t_list)
-                tvec = average_position(t_list, 0.65, 1)  # rej_factor, axis
+                tvec = average_position(t_list, 0.05)  # rej_factor
             t4 = time.time()
 
             # average orientation and position of previous x markers
