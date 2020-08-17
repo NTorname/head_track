@@ -72,6 +72,7 @@ def aa2quat(aa):
 
 def aa2quatSam(aa):
     """
+    takes ib axis angle in form (x,y,z,angle)
     convert from axis angle rotation to quaternion
     :param aa: orientation in axis angle notation
     returns quaternion orientation
@@ -119,6 +120,155 @@ def mul_quaternion(quaternion_1, quaternion_0):
     coeff_k = a * h + b * g - c * f + d * e
     result = [coeff_1, coeff_i, coeff_j, coeff_k]
     return result
+
+
+def conj_quat(q):
+    return [-q[0], -q[1], -q[2], q[3]]
+
+
+def norm_quat(q):
+    q_x = q[0]
+    q_y = q[1]
+    q_z = q[2]
+    q_w = q[3]
+    return np.sqrt(q_x * q_x + q_y * q_y + q_z * q_z + q_w * q_w)
+
+
+def sum_of_squares(q):
+    return np.dot(q, q)
+
+
+def is_unit_quat(q, tolerance=1e-14):
+    """Determine whether the quaternion is of unit length to within a specified tolerance value.
+    Params:
+        tolerance: [optional] maximum absolute value by which the norm can differ from 1.0 for the object to be considered a unit quaternion. Defaults to `1e-14`.
+    Returns:
+        `True` if the Quaternion object is of unit length to within the specified tolerance value. `False` otherwise.
+    """
+    return abs(1.0 - sum_of_squares(q)) < tolerance  # if _sum_of_squares is 1, norm is 1. This saves a call to sqrt()
+
+
+def normalize_quat(q):
+    """
+    Object is guaranteed to be a unit quaternion after calling this
+    operation UNLESS the object is equivalent to Quaternion(0)
+    """
+    q_orig = q
+    if not is_unit_quat(q):
+        n = norm_quat(q)
+        if n > 0:
+            return q / n
+    return q_orig  # return old q if nothing can be done
+
+
+def fast_normalize_quat(q):
+    """
+    Normalise the object to a unit quaternion using a fast approximation method if appropriate.
+    Object is guaranteed to be a quaternion of approximately unit length
+    after calling this operation UNLESS the object is equivalent to Quaternion(0)
+    """
+    q_orig = q
+    if not is_unit_quat(q):
+        mag_squared = np.dot(q, q)
+        if mag_squared == 0:
+            return
+        if abs(1.0 - mag_squared) < 2.107342e-08:
+            mag = ((1.0 + mag_squared) / 2.0)  # More efficient. Pade approximation valid if error is small
+        else:
+            mag = np.sqrt(mag_squared)  # Error is too big, take the performance hit to calculate the square root properly
+
+        return q / mag
+    else:
+        return q_orig
+
+
+def inverse_quat(q):
+    q_c = conj_quat(q)
+    q_conj_x = q_c[0]
+    q_conj_y = q_c[1]
+    q_conj_z = q_c[2]
+    q_conj_w = q_c[3]
+
+    q_norm = norm_quat(q)
+
+    q_inv_x = q_conj_x / (q_norm * q_norm)
+    q_inv_y = q_conj_y / (q_norm * q_norm)
+    q_inv_z = q_conj_z / (q_norm * q_norm)
+    q_inv_w = q_conj_w / (q_norm * q_norm)
+
+    return [q_inv_x, q_inv_y, q_inv_z, q_inv_w]
+
+
+def divide_quat(q1, q2):
+    return mul_quaternion(q1, inverse_quat(q2))
+
+
+def slerp(q0, q1, amount=0.5):
+    """Spherical Linear Interpolation between quaternions.
+    Implemented as described in https://en.wikipedia.org/wiki/Slerp
+    Find a valid quaternion rotation at a specified distance along the
+    minor arc of a great circle passing through any two existing quaternion
+    endpoints lying on the unit radius hypersphere.
+    This is a class method and is called as a method of the class itself rather than on a particular instance.
+    Params:
+        q0: first endpoint rotation as a Quaternion object
+        q1: second endpoint rotation as a Quaternion object
+        amount: interpolation parameter between 0 and 1. This describes the linear placement position of
+            the result along the arc between endpoints; 0 being at `q0` and 1 being at `q1`.
+            Defaults to the midpoint (0.5).
+    Returns:
+        A new Quaternion object representing the interpolated rotation. This is guaranteed to be a unit quaternion.
+    Note:
+        This feature only makes sense when interpolating between unit quaternions (those lying on the unit radius hypersphere).
+            Calling this method will implicitly normalise the endpoints to unit quaternions if they are not already unit length.
+    """
+    # Ensure quaternion inputs are unit quaternions and 0 <= amount <=1
+    q0 = fast_normalize_quat(q0)
+    q1 = fast_normalize_quat(q1)
+    amount = np.clip(amount, 0, 1)
+
+    dot = np.dot(q0, q1)
+
+    # If the dot product is negative, slerp won't take the shorter path.
+    # Note that v1 and -v1 are equivalent when the negation is applied to all four components.
+    # Fix by reversing one quaternion
+    if dot < 0.0:
+        q0 = -q0
+        dot = -dot
+
+    # sin_theta_0 can not be zero
+    if dot > 0.9995:
+        qr = q0 + amount * (q1 - q0)
+        qr = fast_normalize_quat(qr)
+        return qr
+
+    theta_0 = np.arccos(dot)  # Since dot is in range [0, 0.9995], np.arccos() is safe
+    sin_theta_0 = np.sin(theta_0)
+
+    theta = theta_0 * amount
+    sin_theta = np.sin(theta)
+
+    s0 = np.cos(theta) - dot * sin_theta / sin_theta_0
+    s1 = sin_theta / sin_theta_0
+    qr = (s0 * q0) + (s1 * q1)
+    qr = fast_normalize_quat(qr)
+    return qr
+
+
+def avg_quat_sam(q_list):
+    # slerp 'avgs' between 2 q's
+    # avg between first 2, take thant, avg it aginast next, repeat
+    q_avg = slerp(q_list[0], q_list[1])
+    if len(q_list) > 2:
+        i = 2
+        while i < len(q_list):
+            q_avg = slerp(q_avg,q_list[i])
+            i += 1
+        return q_avg
+    elif len(q_list) == 2:
+        return q_avg
+    else:
+        return q_list[0]
 
 
 def quatWAvgMarkley(Q, weights=None):
@@ -191,14 +341,18 @@ def reject_quaternion_outliers(q_list, factor):
     # make median of list of quats
     # compare median to all with product
     # if outside some threshold rem that one
-    avg_q = quatWAvgMarkley(q_list)
+
+    # TODO - check this change
+    #avg_q = quatWAvgMarkley(q_list)
+    avg_q = avg_quat_sam(q_list)
+
     i = 0
     indices_rem = []  # indices we keep (NOT OUTLIERS)
     while i < len(q_list):
         dif_q = q_list[i] - avg_q
         # print 'q: ', q_list[i]
         # print 'median_q: ', median_q
-        # print 'dif_q: ', np.abs((dif_q[0]+dif_q[1]+dif_q[2]+dif_q[3])/4)
+        print 'dif_q: ', np.abs((dif_q[0]+dif_q[1]+dif_q[2]+dif_q[3])/4)
         if np.abs((dif_q[0] + dif_q[1] + dif_q[2] + dif_q[3]) / 4) < factor:
             # print "^^^"
             indices_rem.append(i)
@@ -267,30 +421,13 @@ def average_orientation(q_list, rej_factor=1.0, axis=3):
     q_list_filtered = reject_quaternion_outliers(q_list, rej_factor)
     # if all data is removed from removing outliers we take median value
     if q_list_filtered is None:
+        print 'using median'
         return quaternion_median(q_list)
     else:
-        return quatWAvgMarkley(q_list_filtered)
-
-
-def inverse_quat(q):
-    q_x = q[0]
-    q_y = q[1]
-    q_z = q[2]
-    q_w = q[3]
-
-    q_conj_x = -q_x
-    q_conj_y = -q_y
-    q_conj_z = -q_z
-    q_conj_w = q_w
-
-    q_norm = np.sqrt(q_x * q_x + q_y * q_y + q_z * q_z + q_w * q_w)
-
-    q_inv_x = q_conj_x / (q_norm * q_norm)
-    q_inv_y = q_conj_y / (q_norm * q_norm)
-    q_inv_z = q_conj_z / (q_norm * q_norm)
-    q_inv_w = q_conj_w / (q_norm * q_norm)
-
-    return [q_inv_x, q_inv_y, q_inv_z, q_inv_w]
+        print 'using avg_sam'
+        #TODO check this as well
+        #return quatWAvgMarkley(q_list_filtered)
+        return avg_quat_sam(q_list_filtered)
 
 
 class HeadTracker:
@@ -412,7 +549,7 @@ class HeadTracker:
                     tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
                     # adjust angle 90 degrees cw
                     # q_rot = [0.7071068, 0, -0.7071068, 0]
-                    q_rot = aa2quatSam([0,1,0,np.pi/2])
+                    q_rot = aa2quatSam([0, 1, 0, np.pi / 2])
                     q = mul_quaternion(q, q_rot)
                 elif current_id == self.id_front_L:
                     # move IN 4cm
@@ -455,7 +592,9 @@ class HeadTracker:
             if len(ids) > 1:
                 # averaging orientation
                 q_list = np.array(q_list)
-                q = average_orientation(q_list, 0.7)  # rej_factor, axis  # 1, 3
+                # TODO check this
+                #q = average_orientation(q_list, 0.7)  # rej_factor, axis  # 1, 3
+                q = avg_quat_sam(q_list)
                 # q = quatWAvgMarkley(q_list)
                 # q = quaternion_median(q_list)
                 # averaging position
@@ -583,7 +722,7 @@ def head_track():
     # the less the users moves their head the less annoying the 'lag' will be
     # and having smooth stable position is important if we are using that as a basis
     # for the eye-tracking
-    n_previous_marker = 12  # 30 #12
+    n_previous_marker = 1  # 30 #12
 
     # Create object
     HT = HeadTracker(marker_size, camera_matrix, camera_distortion, parent_link, eye_height, eye_depth, image_topic,
