@@ -256,7 +256,7 @@ def slerp(q0, q1, amount=0.5):
     return qr
 
 
-def avg_quat_sam(q_list):
+def slerp_q_list(q_list):
     # slerp 'avgs' between 2 q's
     # avg between first 2, take thant, avg it aginast next, repeat
     if len(q_list) > 2:
@@ -304,19 +304,7 @@ def quatWAvgMarkley(Q, weights=None):
     return np.linalg.eigh(A)[1][:, -1]
 
 
-# def quaternion_median(Q, axis=3):
-#     """
-#     sorts list of quaternions based on given axis and returns median
-#     :param Q: (ndarray): an Mx4 ndarray of quaternions.
-#     :param axis: which axis to sort on
-#     returns median quaternion
-#     """
-#     # q_list = Q[:,3]
-#     sorted_arr = Q[Q[:, axis].argsort()]
-#     # print 'sorted q_list: ', sorted_arr
-#     return sorted_arr[len(Q) / 2]
-
-def quaternion_median(Q, axis=3):
+def quaternion_median(Q):
     # add xyzw together
     # sort that way?
 
@@ -325,7 +313,7 @@ def quaternion_median(Q, axis=3):
     i = 0
     while i < len(Q):
         # go through all q_list
-        sum += (np.abs(Q[i][0]) * np.abs(Q[i][1]) * np.abs(Q[i][2]) * np.abs(Q[i][3]))
+        sum += (np.abs(Q[i][0]) + np.abs(Q[i][1]) + np.abs(Q[i][2]) * np.abs(Q[i][3]))
         sort_arr.insert(i, sum)
         sum = 0
         i += 1
@@ -339,6 +327,73 @@ def quaternion_median(Q, axis=3):
     return sorted_arr[len(Q) / 2]
 
 
+def thicc(q_list, factor):
+    # TODO
+    #  q's that are very close to average have copies added to the list
+    avg_q = slerp_q_list(q_list)
+    original_q_list = q_list
+
+    # print 'bf: ', len(q_list)
+    axis = 0
+    i = 0
+    indices_rem = []  # indices we keep (NOT OUTLIERS)
+    while i < len(q_list):
+        dif_q = q_list[i][axis] - avg_q[axis]
+        # print 'thicc_dif_qx', dif_q
+        if np.abs(dif_q) < factor:
+            indices_rem.append(i)
+        i += 1
+    q_list_filtered = q_list[indices_rem]
+    # print 'af_x: ', len(q_list_filtered)
+
+    axis = 1
+    i = 0
+    indices_rem = []  # indices we keep (NOT OUTLIERS)
+    while i < len(q_list_filtered):
+        dif_q = q_list_filtered[i][axis] - avg_q[axis]
+        #print 'thicc_dif_qy', dif_q
+        if np.abs(dif_q) < factor:
+            indices_rem.append(i)
+        i += 1
+    q_list_filtered = q_list_filtered[indices_rem]
+    # print 'af_y: ', len(q_list_filtered)
+
+    axis = 2
+    i = 0
+    indices_rem = []  # indices we keep (NOT OUTLIERS)
+    while i < len(q_list_filtered):
+        dif_q = q_list_filtered[i][axis] - avg_q[axis]
+        #print 'thicc_dif_qz', dif_q
+        if np.abs(dif_q) < factor:
+            indices_rem.append(i)
+        i += 1
+    q_list_filtered = q_list_filtered[indices_rem]
+    # print 'af_z: ', len(q_list_filtered)
+
+    axis = 3
+    i = 0
+    indices_rem = []  # indices we keep (NOT OUTLIERS)
+    while i < len(q_list_filtered):
+        dif_q = q_list_filtered[i][axis] - avg_q[axis]
+        #print 'thicc_dif_qw', dif_q
+        if np.abs(dif_q) < factor:
+            indices_rem.append(i)
+        i += 1
+    q_list_filtered = q_list_filtered[indices_rem]
+    print 'thiccening ', len(q_list_filtered)*3
+
+    if len(q_list_filtered) < 1:
+        # print 'REMOVED ALL (in function reject_quaternion_outliers)'
+        return original_q_list
+    else:
+        q_list_filtered_ = np.concatenate((original_q_list,q_list_filtered))
+        q_list_filtered_ = np.concatenate((q_list_filtered_, q_list_filtered))
+        q_list_filtered_ = np.concatenate((q_list_filtered_, q_list_filtered))
+        # print 'q_list_orig: ', original_q_list
+        # print 'q_list_filt: ', q_list_filtered
+        return np.array(q_list_filtered_)
+
+
 def reject_quaternion_outliers(q_list, factor):
     """
     removes outliers from a list of quaternions based similarity of products
@@ -347,13 +402,14 @@ def reject_quaternion_outliers(q_list, factor):
     # w is essentailly angle
     # should compare angle on each axis?
 
-    avg_q = avg_quat_sam(q_list)
+    #avg_q = avg_quat_sam(q_list)
+    avg_q = slerp(slerp_q_list(q_list), quaternion_median(q_list), 0.75)
 
     # check x y z axis to see if they are close
     # then check if angle is close?
 
     #print 'q_listbf_rej: ', q_list
-    print 'before: ', len(q_list)
+    #print 'before: ', len(q_list)
 
     axis = 0
     i = 0
@@ -370,12 +426,12 @@ def reject_quaternion_outliers(q_list, factor):
         i += 1
     q_list_filtered = q_list[indices_rem]
     #print 'q_list_filteredx: ', q_list_filtered
-    print 'after x: ',len(q_list_filtered)
+    #print 'after x: ',len(q_list_filtered)
 
     if len(q_list_filtered) < len(q_list)/3:
         q_list_filtered = q_list
 
-    print 'after x: ', len(q_list_filtered)
+    #print 'after x: ', len(q_list_filtered)
 
     q_list_filtered_bf = q_list_filtered
     axis = 1
@@ -393,12 +449,12 @@ def reject_quaternion_outliers(q_list, factor):
         i += 1
     q_list_filtered = q_list_filtered_bf[indices_rem]
     #print 'q_list_filteredy: ', q_list_filtered
-    print 'after y: ', len(q_list_filtered)
+    #print 'after y: ', len(q_list_filtered)
 
     if len(q_list_filtered) < len(q_list_filtered_bf)/3:
         q_list_filtered = q_list_filtered_bf
 
-    print 'after y: ', len(q_list_filtered)
+    #print 'after y: ', len(q_list_filtered)
 
     q_list_filtered_bf = q_list_filtered
     axis = 2
@@ -415,12 +471,12 @@ def reject_quaternion_outliers(q_list, factor):
         i += 1
     q_list_filtered = q_list_filtered_bf[indices_rem]
     #print 'q_list_filteredz: ', q_list_filtered
-    print 'after z: ', len(q_list_filtered)
+    #print 'after z: ', len(q_list_filtered)
 
     if len(q_list_filtered) < len(q_list_filtered_bf)/3:
         q_list_filtered = q_list_filtered_bf
 
-    print 'after z: ', len(q_list_filtered)
+    #print 'after z: ', len(q_list_filtered)
 
     q_list_filtered_bf = q_list_filtered
     axis = 3
@@ -437,7 +493,7 @@ def reject_quaternion_outliers(q_list, factor):
         i += 1
     q_list_filtered = q_list_filtered_bf[indices_rem]
     # print 'q_list_ filtered: ', q_list_filtered
-    print 'after w: ', len(q_list_filtered)
+    print 'remaining: ', len(q_list_filtered)
 
     # if len(q_list_filtered) < len(q_list_filtered_bf)/3:
     #     q_list_filtered = q_list_filtered_bf
@@ -540,12 +596,12 @@ def average_orientation(q_list, rej_factor, depth = 0):
         print 'RECURRSION'
         if depth > 5:
             # print 'BREAK!!!'
-            return avg_quat_sam(q_list)
+            return slerp_q_list(q_list)
         # print 'q_list: ', q_list
         # return quaternion_median(q_list)
         return average_orientation(q_list, rej_factor + 0.01, depth + 1)
     else:
-        return avg_quat_sam(q_list_filtered)
+        return slerp_q_list(q_list_filtered)
 
 
 class HeadTracker:
@@ -639,7 +695,7 @@ class HeadTracker:
                 q = aa2quat((rvec[0][0]))
                 tvec = tvec[0][0]
                 tvec = [tvec[0] / 10, tvec[1] / 10, tvec[2] / 10]
-                move_cm = -0.175 / 4
+                move_cm = -0.175 / 4    #idk why this has to be divided by 4 instead of by 2 like id expect
                 tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
                 if current_id == self.id_back:
                     # adjust angle 90 degrees ccw
@@ -708,10 +764,21 @@ class HeadTracker:
             if len(ids) > 1:
                 # averaging orientation
                 q_list = np.array(q_list)
-                q = average_orientation(q_list, 0.5)  # rej_factor
-                # q = avg_quat_sam(q_list)
+                #q_list = thicc(q_list,0.02)
+                #q = average_orientation(q_list, 0.5)  # rej_factor
+                #q = avg_quat_sam(q_list)
                 # q = quatWAvgMarkley(q_list)
-                # q = quaternion_median(q_list)
+                #q = quaternion_median(q_list)
+
+                # q = slerp(slerp_q_list(thicc(q_list,0.02)),quaternion_median(q_list),0.5)
+                # q = slerp_q_list(thicc(q_list, 0.4))
+                # q = slerp_q_list(q_list)
+
+                q_list = reject_quaternion_outliers(q_list, 0.5)    # reject a bit garbage
+                q_list = thicc(q_list,0.01)     # beef up decent numbers
+                q = slerp_q_list(q_list)   # slerp them numbers
+                q = slerp(q, quaternion_median(q_list),0.2)  # slerp that value w/ the median
+
                 # averaging position
                 t_list = np.array(t_list)
                 tvec = average_position(t_list, 0.03)  # rej_factor
@@ -728,7 +795,12 @@ class HeadTracker:
                 # TODO
                 #q = average_orientation(q_list, 0.1)
                 #q_list = reject_quaternion_outliers(q_list,0.8)
-                q = quatWAvgMarkley(q_list)
+                #q = quatWAvgMarkley(q_list) # <---what i was using
+
+                q_list = reject_quaternion_outliers(q_list, 0.8)    # reject some more garbage
+                q = slerp_q_list(q_list)    # slerp 'em
+                q = slerp(q, quatWAvgMarkley(q_list),0.1)
+
                 #q = avg_quat_sam(q_list)
                 # average position
                 self.marker_pos_arr.append(copy.deepcopy(tvec))
@@ -849,7 +921,7 @@ def head_track():
     # the less the users moves their head the less annoying the 'lag' will be
     # and having smooth stable position is important if we are using that as a basis
     # for the eye-tracking
-    n_previous_marker = 12  # 30 #12
+    n_previous_marker = 10  # 30 #12
 
     # Create object
     HT = HeadTracker(marker_size, camera_matrix, camera_distortion, parent_link, eye_height, eye_depth, image_topic,
