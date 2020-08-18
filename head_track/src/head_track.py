@@ -336,7 +336,7 @@ def quaternion_median(Q, axis=3):
     return sorted_arr[len(Q) / 2]
 
 
-def reject_quaternion_outliers(q_list, axis_factor, angle_factor):
+def reject_quaternion_outliers(q_list, factor, ):
     """
     removes outliers from a list of quaternions based similarity of products
     """
@@ -356,8 +356,8 @@ def reject_quaternion_outliers(q_list, axis_factor, angle_factor):
         dif_q = q_list[i][axis] - avg_q[axis]
         # print 'q: ', q_list[i]
         # print 'median_q: ', median_q
-        print 'dif_qx: ', dif_q
-        if np.abs(dif_q) < axis_factor:
+        # print 'dif_qx: ', dif_q
+        if np.abs(dif_q) < factor:
             # print "^^^"
             indices_rem.append(i)
         i += 1
@@ -371,9 +371,9 @@ def reject_quaternion_outliers(q_list, axis_factor, angle_factor):
         dif_q = q_list_filtered[i][axis] - avg_q[axis]
         # print 'q: ', q_list[i]
         # print 'median_q: ', median_q
-        print 'dif_qy: ', dif_q
-        print 'axis_factor=',axis_factor
-        if np.abs(dif_q) < axis_factor:
+        # print 'dif_qy: ', dif_q
+        # print 'axis_factor=',factor
+        if np.abs(dif_q) < factor:
             # print "^^^"
             indices_rem.append(i)
         i += 1
@@ -387,8 +387,8 @@ def reject_quaternion_outliers(q_list, axis_factor, angle_factor):
         dif_q = q_list_filtered[i][axis] - avg_q[axis]
         # print 'q: ', q_list[i]
         # print 'median_q: ', median_q
-        print 'dif_qz: ', dif_q
-        if np.abs(dif_q) < axis_factor:
+        # print 'dif_qz: ', dif_q
+        if np.abs(dif_q) < factor:
             # print "^^^"
             indices_rem.append(i)
         i += 1
@@ -402,8 +402,8 @@ def reject_quaternion_outliers(q_list, axis_factor, angle_factor):
         dif_q = q_list_filtered[i][axis] - avg_q[axis]
         # print 'q: ', q_list[i]
         # print 'median_q: ', median_q
-        print 'dif_qw: ', dif_q
-        if np.abs(dif_q) < angle_factor:
+        # print 'dif_qw: ', dif_q
+        if np.abs(dif_q) < factor:
             # print "^^^"
             indices_rem.append(i)
         i += 1
@@ -419,7 +419,7 @@ def reject_quaternion_outliers(q_list, axis_factor, angle_factor):
     else:
         # print 'len of q_list_filtered: ', len(q_list_filtered)
         # print 'REMOVED: ', (len(q_list) - len(q_list_filtered))
-        print str(len(q_list_filtered)) + '/' + str(len(q_list))
+        # print str(len(q_list_filtered)) + '/' + str(len(q_list))
         return np.array(q_list_filtered)
 
 
@@ -486,11 +486,11 @@ def average_position(xyz_list, rej_factor):
         return [np.mean(xyz_list[:, 0]), np.mean(xyz_list[:, 1]), np.mean(xyz_list[:, 2])]
     else:
         # print 'REMOVED tvec: ', (len(t_list) - len(t_list_filtered))
-        # print str(len(t_list_filtered)) + '/' + str(len(t_list))
+        print str(len(t_list_filtered)) + '/' + str(len(t_list))
         return [np.mean(t_list_filtered[:, 0]), np.mean(t_list_filtered[:, 1]), np.mean(t_list_filtered[:, 2])]
 
 
-def average_orientation(q_list, axis_rej_factor, angle_rej_factor, depth = 0):
+def average_orientation(q_list, rej_factor, depth=0):
     """
     takes a list of quaternions and returns the average
     :param q_list: list of quaternions
@@ -499,18 +499,17 @@ def average_orientation(q_list, axis_rej_factor, angle_rej_factor, depth = 0):
     returns average quaternion
     if all list items are 'Outliers' and removed then return median quaternion
     """
-    q_list_filtered = reject_quaternion_outliers(q_list, axis_rej_factor, angle_rej_factor)
+    q_list_filtered = reject_quaternion_outliers(q_list, rej_factor)
     # if all data is removed from removing outliers we take median value
 
     if q_list_filtered is None:
-        #TODO recurs
-        print 'RECURRSION'
+        # print 'RECURRSION'
         if depth > 5:
-            print 'BREAK!!!'
+            # print 'BREAK!!!'
             return avg_quat_sam(q_list)
-        #print 'q_list: ', q_list
+        # print 'q_list: ', q_list
         # return quaternion_median(q_list)
-        return average_orientation(q_list, axis_rej_factor + 0.01, angle_rej_factor + 0.01, depth+1)
+        return average_orientation(q_list, rej_factor + 0.01, depth + 1)
     else:
         return avg_quat_sam(q_list_filtered)
 
@@ -605,52 +604,44 @@ class HeadTracker:
                 current_id = ids[i]
                 q = aa2quat((rvec[0][0]))
                 tvec = tvec[0][0]
-                move_cm = -0.07
+                tvec = [tvec[0] / 10, tvec[1] / 10, tvec[2] / 10]
+                move_cm = -0.175 / 4
+                tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
                 if current_id == self.id_back:
-                    # move IN 4cm
-                    tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
                     # adjust angle 90 degrees ccw
-                    # q_rot = [0, 0.7071068, 0, 0.7071068]
+                    # # q_rot = [0, 0.7071068, 0, 0.7071068]
                     q_rot = aa2quatSam([0, 1, 0, -np.pi / 2])
                     q = mul_quaternion(q, q_rot)
+                    q_rot = aa2quatSam([1, 0, 0, 0])
+                    q = mul_quaternion(q, q_rot)
                 elif current_id == self.id_back_R:
-                    # move IN 4cm
-                    tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
                     # adjust angle 45 degrees ccw
                     q_rot = [0.9238795, 0, 0.3826834, 0]
                     q = mul_quaternion(q, q_rot)
                 elif current_id == self.id_right:
-                    # move IN 4cm
-                    tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
+                    # do nothing
+                    pass
                     # angle is good
                 elif current_id == self.id_front_R:
-                    # move IN 4cm
-                    tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
                     # angle rotate 45 degrees cw
                     q_rot = [0.9238795, 0, -0.3826834, 0]  # q_rot = [0, 0.3826834, 0, 0.9238795]
                     q = mul_quaternion(q, q_rot)
                 elif current_id == self.id_front:
-                    # move IN 4cm
-                    tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
                     # adjust angle 90 degrees cw
-                    # q_rot = [0.7071068, 0, -0.7071068, 0]
+                    # # q_rot = [0.7071068, 0, -0.7071068, 0]
                     q_rot = aa2quatSam([0, 1, 0, np.pi / 2])
                     q = mul_quaternion(q, q_rot)
+                    q_rot = aa2quatSam([1, 0, 0, 0])
+                    q = mul_quaternion(q, q_rot)
                 elif current_id == self.id_front_L:
-                    # move IN 4cm
-                    tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
                     # angle rotate 135 degrees cw
                     q_rot = [0.3826834, 0, -0.9238795, 0]
                     q = mul_quaternion(q, q_rot)
                 elif current_id == self.id_left:
-                    # move IN 4cm
-                    tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
                     # angle rotate 180 degrees cw
                     q_rot = [0, 0, 1, 0]
                     q = mul_quaternion(q, q_rot)
                 elif current_id == self.id_back_L:
-                    # move IN 4cm
-                    tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
                     # angle rotate 135 degrees ccw
                     q_rot = [0.3826834, 0, 0.9238795, 0]
                     q = mul_quaternion(q, q_rot)
@@ -672,18 +663,22 @@ class HeadTracker:
 
             t2 = time.time()
 
+            #TODO
+            #HARDCODE TEST ORIENTATION AND POSITIONS
+            q_list = [[0, 0, 0, 1],[0, 0, 0.0871557, 0.9961947],[0, 0, -0.0871557, 0.9961947],[ 0, 0, -0.3826834, 0.9238795],[0, 0, 0.3826834, 0.9238795],[0, 0, 0.5735764, 0.819152],[0, 0, -0.5735764, 0.819152]]
+
             # average orientation and position of all currently viewable markers
             t3 = time.time()
             if len(ids) > 1:
                 # averaging orientation
                 q_list = np.array(q_list)
-                q = average_orientation(q_list, 0.1, 0.05)  # rej_factor, axis  # 1, 3
+                q = average_orientation(q_list, 0.1)  # rej_factor
                 # q = avg_quat_sam(q_list)
                 # q = quatWAvgMarkley(q_list)
                 # q = quaternion_median(q_list)
                 # averaging position
                 t_list = np.array(t_list)
-                tvec = average_position(t_list, 0.01)  # rej_factor
+                tvec = average_position(t_list, 0.03)  # rej_factor
                 # (reject any positions greater than this distance away fom avg position (in meters))
             t4 = time.time()
 
@@ -695,8 +690,9 @@ class HeadTracker:
                 self.marker_orient_arr = self.marker_orient_arr[1:self.n_avg_previous_marker + 1]
                 q_list = np.array(self.marker_orient_arr)
                 # TODO
-                q = average_orientation(q_list, 0.05, 0.05)
-                #q = avg_quat_sam(q_list)
+                # print 'q_list: ', q_list
+                # q = average_orientation(q_list, 0.05, 0.05)
+                q = avg_quat_sam(q_list)
                 # average position
                 self.marker_pos_arr.append(copy.deepcopy(tvec))
                 self.marker_pos_arr = self.marker_pos_arr[1:self.n_avg_previous_marker + 1]
@@ -708,6 +704,8 @@ class HeadTracker:
             # rotate 90 so z is up
             q_rot = [0.7071068, 0, 0, 0.7071068]
             q = mul_quaternion(q, q_rot)
+
+            # print 'q: ', q
 
             # assemble pose message
             pose = geometry_msgs.msg.PoseStamped()
@@ -737,6 +735,7 @@ class HeadTracker:
         self.pubIm.publish(bridge.cv2_to_imgmsg(frame, encoding="passthrough"))
 
         self.publish(self.outPose)
+        # print 'pose: ', self.outPose
 
         t_total_last = time.time()
         total = "Total time: {} seconds\n"
@@ -782,7 +781,7 @@ def head_track():
     # TODO: select your size of marker in m
     # marker_size
     # marker_size = 0.065   # 1x1
-    marker_size = 0.028  # 2x2
+    marker_size = 0.03 * 10  # 2x2
     # marker_size = 0.02  # 3x3
 
     # get camera calibration
@@ -810,7 +809,7 @@ def head_track():
     # the less the users moves their head the less annoying the 'lag' will be
     # and having smooth stable position is important if we are using that as a basis
     # for the eye-tracking
-    n_previous_marker = 18  # 30 #12
+    n_previous_marker = 30  # 30 #12
 
     # Create object
     HT = HeadTracker(marker_size, camera_matrix, camera_distortion, parent_link, eye_height, eye_depth, image_topic,
