@@ -12,14 +12,21 @@ import rospy
 import tf
 
 # scipy
+import scipy
 import numpy as np
+import matplotlib.pyplot as plt
+from scipy.signal import lfilter
+from scipy.signal import savgol_filter
 
 # cv
 import cv2.aruco, cv2
 from cv_bridge import CvBridge
 
 
-import pfilter
+# import pfilter
+from pykalman import KalmanFilter
+import pykalman
+from pykalman import UnscentedKalmanFilter
 
 # set up link between ros topics and opencv
 bridge = CvBridge()
@@ -279,6 +286,64 @@ def slerp_q_list(q_list):
         return q_list[0]
 
 
+# BROKEN
+# def median_quaternions_weiszfeld(Q, p = 1, maxAngularUpdate = 0.0001, maxIterations = 10):
+#     A = np.zeros((4, 4))
+#     M = Q.shape[0]
+#
+#     st = q_average(Q)
+#     qMedian = (st[0], st[1], st[2], st[3])
+#     epsAngle = 0.0000001
+#     maxAngularUpdate = max(maxAngularUpdate, epsAngle)
+#     theta = 10 * maxAngularUpdate
+#     i = 0
+#
+#     while (theta > maxAngularUpdate and i <= maxIterations):
+#         delta = (0, 0, 0)
+#         weightSum = 0
+#         j = 0
+#         while j < M:
+#             q = Q[j,:]
+#             qj = np.array([q[0], q[1], q[2], q[3]]) * np.array(conj_quat(qMedian))
+#             theta = 2 * np.arccos(qj[3])
+#             if (theta > epsAngle):
+#                 axisAngle = [qj[0],qj[1],qj[2]] / np.sin(theta / 2)
+#                 axisAngle *= theta
+#                 weight = 1.0 / pow(theta, 2 - p)
+#                 delta += weight * axisAngle
+#                 weightSum += weight
+#             j += 1
+#
+#         if (weightSum > epsAngle):
+#             delta /= weightSum
+#             theta = np.linalg.norm(delta)
+#             if (theta > epsAngle):
+#                 stby2 = np.sin(theta * 0.5)
+#                 delta /= theta
+#                 q = (np.cos(theta * 0.5), stby2 * delta[0], stby2 * delta[1], stby2 * delta[2])
+#                 qMedian = mul_quaternion(q,qMedian)
+#                 #t_qfix(qMedian);
+#                 qMedian = fast_normalize_quat(qMedian)
+#         else:
+#             theta = 0
+#             i += 1
+#
+#     return qMedian;
+
+
+def q_average(Q):
+    A = np.zeros((4, 4))
+    M = Q.shape[0]
+    for i in range(M):
+        q = Q[i,:]
+        if q[3] < 0:
+            q = -q
+        A += np.outer(q, q)
+    A /= M
+
+    eigvals, eigvecs = np.linalg.eig(np.matmul(Q.T,Q))
+    return eigvecs[:, eigvals.argmax()]
+
 def quatWAvgMarkley(Q, weights=None):
     """
     Averages quaternions
@@ -316,7 +381,7 @@ def quaternion_median(Q):
     i = 0
     while i < len(Q):
         # go through all q_list
-        sum += (np.abs(Q[i][0]) + np.abs(Q[i][1]) + np.abs(Q[i][2]) * np.abs(Q[i][3]))
+        sum += (np.abs(Q[i][0]) + np.abs(Q[i][1]) + np.abs(Q[i][2]) + np.abs(Q[i][3]))
         sort_arr.insert(i, sum)
         sum = 0
         i += 1
@@ -604,6 +669,78 @@ def average_orientation(q_list, rej_factor, depth = 0):
         return slerp_q_list(q_list_filtered)
 
 
+def test_function_Savitzky_Golay(q_list):
+    # e_list = []
+    # i = 0
+    # while i < len(q_list):
+    #     e_list.insert(i, [euler_from_quaternion(q_list[i])[0], euler_from_quaternion(q_list[i])[1],
+    #                       euler_from_quaternion(q_list[i])[2]])
+    #     e_list[i] = [e_list[i][0] + np.pi, e_list[i][1] + np.pi, e_list[i][2] + np.pi]
+    #     i += 1
+    # e_list = np.array(e_list)
+    #
+    # avg_q = [np.mean(e_list[:, 0]) - np.pi, np.mean(e_list[:, 1]) - np.pi, np.mean(e_list[:, 2]) - np.pi]
+    # scipy.savgol_filter()
+    q_list = np.array(q_list)
+    x_axis = np.arange(1, len(q_list)+1, 1)  # x axis
+
+    window_len = len(x_axis)
+    if window_len % 2 == 0:
+        window_len -= 1
+    yx = savgol_filter(q_list[:,0], window_len, 2)
+    yy = savgol_filter(q_list[:,1], window_len, 2)
+    yz = savgol_filter(q_list[:,2], window_len, 2)
+    yw = savgol_filter(q_list[:,3], window_len, 2)
+
+    return_list = []
+    i = 0
+    while i < len(x_axis):
+        return_list.append([yx[i],yy[i],yz[i],yw[i]])
+        i += 1
+    return_list = np.array(return_list)
+
+    # plt.plot(x_axis, q_list[:,0], linewidth=2, linestyle="-", c="r")
+    # plt.plot(x_axis, q_list[:,1], linewidth=2, linestyle="-", c="g")
+    # plt.plot(x_axis, q_list[:,2], linewidth=2, linestyle="-", c="b")
+    # plt.plot(x_axis, q_list[:,3], linewidth=2, linestyle="-", c="y")
+
+    plt.plot(x_axis, yx, linewidth=2, linestyle=":", c="r")
+    plt.plot(x_axis,  yy, linewidth=2, linestyle=":", c="g")
+    plt.plot(x_axis,  yz, linewidth=2, linestyle=":", c="b")
+    plt.plot(x_axis,  yw, linewidth=2, linestyle=":", c="y")
+
+    #avg_q = slerp_q_list(return_list)
+    #avg_q = quatWAvgMarkley(return_list)
+    # weights = []
+    # i = 0.0
+    # while i < len(x_axis):
+    #     if i < len(x_axis)/2:
+    #         weights.append(i/len(x_axis))
+    #         print i/len(x_axis)
+    #     else:
+    #         weights.append((len(x_axis) - i)/len(x_axis))
+    #         print (len(x_axis) - i)/len(x_axis)
+    #     i += 1.0
+    # print 'weights: ', weights
+    avg_q = q_average(return_list)
+    #avg_q = quatWAvgMarkley(return_list,weights)
+    #avg_q = quaternion_median(return_list)
+
+    list = []
+    i = 0
+    while i < len(x_axis):
+        list.append(avg_q)
+        i += 1
+    list = np.array(list)
+
+    plt.plot(x_axis, list[:, 0], linewidth=2, linestyle="--", c="r")
+    plt.plot(x_axis, list[:, 1], linewidth=2, linestyle="--", c="g")
+    plt.plot(x_axis, list[:, 2], linewidth=2, linestyle="--", c="b")
+    plt.plot(x_axis, list[:, 3], linewidth=2, linestyle="--", c="y")
+
+    return avg_q
+
+
 class HeadTracker:
     def __init__(self, marker_size, camera_matrix, camera_distortion, parent_link, eye_height, eye_depth, image_topic,
                  n_avg_previous_marker=18):
@@ -809,14 +946,26 @@ class HeadTracker:
                 # # q_list = thicc(q_list,0.01)     # beef up decent numbers
                 # q = slerp_q_list(q_list)   # slerp them numbers
 
-                q = average_orientation(q_list, 3*np.pi/180)
-                if q is None:
-                    # print 'prev_q: ', self.marker_orient_arr
-                    # print 'q we grab: ', self.marker_orient_arr[self.n_avg_previous_marker - 1]
-                    #q = self.marker_orient_arr[self.n_avg_previous_marker - 1]
-                    temp = np.array(copy.deepcopy(self.marker_orient_arr))
-                    q = slerp_q_list(temp)
-                # q = slerp(q, quaternion_median(q_list),0.2)  # slerp that value w/ the median
+                # test_function_Savitzky_Golay(q_list)
+                # plt.show()
+                # plt.close()
+
+                # # Averaging Orientation
+                # q = average_orientation(q_list, 3*np.pi/180)
+                # if q is None:
+                #     # print 'prev_q: ', self.marker_orient_arr
+                #     # print 'q we grab: ', self.marker_orient_arr[self.n_avg_previous_marker - 1]
+                #     #q = self.marker_orient_arr[self.n_avg_previous_marker - 1]
+                #     temp = np.array(copy.deepcopy(self.marker_orient_arr))
+                #     q = slerp_q_list(temp)
+                if len(q_list) > 2:
+                    q = test_function_Savitzky_Golay(q_list)
+                else:
+                    q = q_average(q_list)
+                # plt.show()
+                # plt.close()
+
+                # q = slerp_q_list(smoothed_state_means)
 
                 # averaging position
                 t_list = np.array(t_list)
@@ -993,7 +1142,7 @@ def head_track():
     # the less the users moves their head the less annoying the 'lag' will be
     # and having smooth stable position is important if we are using that as a basis
     # for the eye-tracking
-    n_previous_marker = 10  # 30 #12
+    n_previous_marker = 15  # 30 #12
 
     # Create object
     HT = HeadTracker(marker_size, camera_matrix, camera_distortion, parent_link, eye_height, eye_depth, image_topic,
