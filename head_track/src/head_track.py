@@ -76,13 +76,12 @@ def aa2quat(aa):
     axis = (aa[0] / angle, aa[1] / angle, aa[2] / angle)
     angle_2 = angle / 2
     q = [axis[0] * np.sin(angle_2), axis[1] * np.sin(angle_2), axis[2] * np.sin(angle_2), np.cos(angle_2)]
-    # print "q: ", q
     return q
 
 
 def aa2quatSam(aa):
     """
-    takes ib axis angle in form (x,y,z,angle)
+    takes in axis angle in form (x,y,z,angle)
     convert from axis angle rotation to quaternion
     :param aa: orientation in axis angle notation
     returns quaternion orientation
@@ -267,8 +266,8 @@ def slerp(q0, q1, amount=0.5):
 
 
 def slerp_q_list(q_list):
-    # slerp 'avgs' between 2 q's
-    # avg between first 2, take thant, avg it aginast next, repeat
+    # slerp 'avgs' between list of q's
+    # avg between first 2, take thant, avg it against next, repeat
     if len(q_list) > 2:
         q_avg = slerp(q_list[0], q_list[1])
         i = 2
@@ -372,97 +371,227 @@ def quatWAvgMarkley(Q, weights=None):
     return np.linalg.eigh(A)[1][:, -1]
 
 
-def quaternion_median(Q):
-    # add xyzw together
-    # sort that way?
+# I dont trust this - Sam
+# def quaternion_median(Q):
+#     # add xyzw together
+#     # sort that way?
+#
+#     sort_arr = []
+#     sum = 0
+#     i = 0
+#     while i < len(Q):
+#         # go through all q_list
+#         sum += (np.abs(Q[i][0]) + np.abs(Q[i][1]) + np.abs(Q[i][2]) + np.abs(Q[i][3]))
+#         sort_arr.insert(i, sum)
+#         sum = 0
+#         i += 1
+#     # sort q_list by sort_arr?
+#     # print "Q: ", Q
+#     sort_arr = np.array(sort_arr)
+#     # print "Sort: ", sort_arr
+#     sorted_arr = Q[sort_arr.argsort()]
+#     # print "med_q: ", sorted_arr
+#
+#     return sorted_arr[len(Q) / 2]
 
-    sort_arr = []
-    sum = 0
-    i = 0
-    while i < len(Q):
-        # go through all q_list
-        sum += (np.abs(Q[i][0]) + np.abs(Q[i][1]) + np.abs(Q[i][2]) + np.abs(Q[i][3]))
-        sort_arr.insert(i, sum)
-        sum = 0
-        i += 1
-    # sort q_list by sort_arr?
-    # print "Q: ", Q
-    sort_arr = np.array(sort_arr)
-    # print "Sort: ", sort_arr
-    sorted_arr = Q[sort_arr.argsort()]
-    # print "med_q: ", sorted_arr
 
-    return sorted_arr[len(Q) / 2]
+#I dont trust this either
+# def thicc(q_list, factor):
+#     # TODO
+#     #  q's that are very close to average have copies added to the list
+#     avg_q = slerp_q_list(q_list)
+#     original_q_list = q_list
+#
+#     # print 'bf: ', len(q_list)
+#     axis = 0
+#     i = 0
+#     indices_rem = []  # indices we keep (NOT OUTLIERS)
+#     while i < len(q_list):
+#         dif_q = q_list[i][axis] - avg_q[axis]
+#         # print 'thicc_dif_qx', dif_q
+#         if np.abs(dif_q) < factor:
+#             indices_rem.append(i)
+#         i += 1
+#     q_list_filtered = q_list[indices_rem]
+#     # print 'af_x: ', len(q_list_filtered)
+#
+#     axis = 1
+#     i = 0
+#     indices_rem = []  # indices we keep (NOT OUTLIERS)
+#     while i < len(q_list_filtered):
+#         dif_q = q_list_filtered[i][axis] - avg_q[axis]
+#         #print 'thicc_dif_qy', dif_q
+#         if np.abs(dif_q) < factor:
+#             indices_rem.append(i)
+#         i += 1
+#     q_list_filtered = q_list_filtered[indices_rem]
+#     # print 'af_y: ', len(q_list_filtered)
+#
+#     axis = 2
+#     i = 0
+#     indices_rem = []  # indices we keep (NOT OUTLIERS)
+#     while i < len(q_list_filtered):
+#         dif_q = q_list_filtered[i][axis] - avg_q[axis]
+#         #print 'thicc_dif_qz', dif_q
+#         if np.abs(dif_q) < factor:
+#             indices_rem.append(i)
+#         i += 1
+#     q_list_filtered = q_list_filtered[indices_rem]
+#     # print 'af_z: ', len(q_list_filtered)
+#
+#     axis = 3
+#     i = 0
+#     indices_rem = []  # indices we keep (NOT OUTLIERS)
+#     while i < len(q_list_filtered):
+#         dif_q = q_list_filtered[i][axis] - avg_q[axis]
+#         #print 'thicc_dif_qw', dif_q
+#         if np.abs(dif_q) < factor:
+#             indices_rem.append(i)
+#         i += 1
+#     q_list_filtered = q_list_filtered[indices_rem]
+#     print 'thiccening ', len(q_list_filtered)*3
+#
+#     if len(q_list_filtered) < 1:
+#         # print 'REMOVED ALL (in function reject_quaternion_outliers)'
+#         return original_q_list
+#     else:
+#         q_list_filtered_ = np.concatenate((original_q_list,q_list_filtered))
+#         q_list_filtered_ = np.concatenate((q_list_filtered_, q_list_filtered))
+#         q_list_filtered_ = np.concatenate((q_list_filtered_, q_list_filtered))
+#         # print 'q_list_orig: ', original_q_list
+#         # print 'q_list_filt: ', q_list_filtered
+#         return np.array(q_list_filtered_)
 
 
-def thicc(q_list, factor):
-    # TODO
-    #  q's that are very close to average have copies added to the list
-    avg_q = slerp_q_list(q_list)
-    original_q_list = q_list
+def de_dup(mylist):
+    return list(dict.fromkeys(mylist))
 
-    # print 'bf: ', len(q_list)
-    axis = 0
-    i = 0
-    indices_rem = []  # indices we keep (NOT OUTLIERS)
-    while i < len(q_list):
-        dif_q = q_list[i][axis] - avg_q[axis]
-        # print 'thicc_dif_qx', dif_q
-        if np.abs(dif_q) < factor:
-            indices_rem.append(i)
-        i += 1
-    q_list_filtered = q_list[indices_rem]
-    # print 'af_x: ', len(q_list_filtered)
 
-    axis = 1
-    i = 0
-    indices_rem = []  # indices we keep (NOT OUTLIERS)
-    while i < len(q_list_filtered):
-        dif_q = q_list_filtered[i][axis] - avg_q[axis]
-        #print 'thicc_dif_qy', dif_q
-        if np.abs(dif_q) < factor:
-            indices_rem.append(i)
-        i += 1
-    q_list_filtered = q_list_filtered[indices_rem]
-    # print 'af_y: ', len(q_list_filtered)
+# def reject_quaternion_outliers(q_list, factor):
+#     e_list = []
+#     i = 0
+#     while i < len(q_list):
+#         e_list.insert(i, [euler_from_quaternion(q_list[i])[0],euler_from_quaternion(q_list[i])[1],euler_from_quaternion(q_list[i])[2]])
+#         e_list[i] = [e_list[i][0]+np.pi,e_list[i][1]+np.pi,e_list[i][2]+np.pi]
+#         i += 1
+#     e_list = np.array(e_list)
+#
+#     avg_q = [np.mean(e_list[:, 0])-np.pi, np.mean(e_list[:, 1])-np.pi, np.mean(e_list[:, 2])-np.pi]
+#     # print "avg_e: ", avg_q
+#
+#     axis = 0
+#     i = 0
+#     indices_keep = []  # indices we keep (NOT OUTLIERS)
+#     while i < len(q_list):
+#         dif_q = avg_q[axis] - euler_from_quaternion(q_list[i])[axis]
+#         # temp_str = "dif_qx: {}\t< {}"
+#         # print temp_str.format(dif_q,factor)
+#         if np.abs(dif_q) < factor:
+#             # print "TRUE (KEEP)"
+#             indices_keep.append(i)
+#         i += 1
+#     # print "x says keep: ", indices_keep
+#     q_list_filtered1 = q_list[indices_keep]
+#     # print 'q-list-filtered-1: ', q_list_filtered1
+#
+#     axis = 1
+#     i = 0
+#     indices_keep = []  # indices we keep (NOT OUTLIERS)
+#     while i < len(q_list):
+#         dif_q = avg_q[axis] - euler_from_quaternion(q_list[i])[axis]
+#         # temp_str = "dif_qy: {}\t< {}"
+#         # print temp_str.format(dif_q, factor)
+#         if np.abs(dif_q) < factor:
+#             # print "TRUE (KEEP)"
+#             indices_keep.append(i)
+#         i += 1
+#     # print "y says keep: ", indices_keep
+#     q_list_filtered2 = q_list[indices_keep]
+#
+#     axis = 2
+#     i = 0
+#     indices_keep = []  # indices we keep (NOT OUTLIERS)
+#     while i < len(q_list):
+#         dif_q = avg_q[axis] - euler_from_quaternion(q_list[i])[axis]
+#         # temp_str = "dif_qz: {}\t< {}"
+#         # print temp_str.format(dif_q, factor)
+#         if np.abs(dif_q) < factor:
+#             # print "TRUE (KEEP)"
+#             indices_keep.append(i)
+#         i += 1
+#     # print "z says keep: ", indices_keep
+#     q_list_filtered3 = q_list[indices_keep]
+#
+#     q_list_final_pre = []
+#     q_list_final = []
+#     i = 0
+#     while i < len(q_list_filtered1):
+#         j = 0
+#         while j < len(q_list_filtered2):
+#             # temp_str = "{} v {}\t{} v {}\t{} v {}\t{} v {}"
+#             # print temp_str.format(q_list_filtered1[i][0], q_list_filtered2[j][0],q_list_filtered1[i][1],q_list_filtered2[j][1],q_list_filtered1[i][2],q_list_filtered2[j][2],q_list_filtered1[i][3],q_list_filtered2[j][3])
+#             if (q_list_filtered1[i][0] == q_list_filtered2[j][0]) and (q_list_filtered1[i][1] == q_list_filtered2[j][1]) and (q_list_filtered1[i][2] == q_list_filtered2[j][2]) and (q_list_filtered1[i][3] == q_list_filtered2[j][3]):
+#                 # print "WE IN BOIS!!!"
+#                 q_list_final_pre.append([q_list_filtered1[i][0],q_list_filtered1[i][1],q_list_filtered1[i][2], q_list_filtered1[i][3]])
+#             j += 1
+#         i += 1
+#     # print "!!!!!!!!!!!!!!!!!!!!!!"
+#     # print "q_list_final_pre: ", q_list_final_pre
+#     i = 0
+#     while i < len(q_list_final_pre):
+#         j = 0
+#         while j < len(q_list_filtered3):
+#             # temp_str = "{} v {}\t{} v {}\t{} v {}\t{} v {}"
+#             # print temp_str.format(q_list_final_pre[i][0], q_list_filtered3[j][0],q_list_final_pre[i][1], q_list_filtered3[j][1],q_list_final_pre[i][2], q_list_filtered3[j][2],q_list_final_pre[i][3],q_list_filtered3[j][3])
+#             if (q_list_final_pre[i][0] == q_list_filtered3[j][0]) and (q_list_final_pre[i][1] == q_list_filtered3[j][1]) and (q_list_final_pre[i][2] == q_list_filtered3[j][2]) and (q_list_final_pre[i][3] == q_list_filtered3[j][3]):
+#                 # print "WE IN BOIS!!!"
+#                 q_list_final.append([q_list_final_pre[i][0],q_list_final_pre[i][1],q_list_final_pre[i][2], q_list_final_pre[i][3]])
+#             j += 1
+#         i += 1
+#     # print "!!!!!!!!!!!!!!!!!!!!!!"
+#     # print "q_list_final: ", q_list_final
+#
+#     # print 'remaining: ', len(q_list_final)
+#
+#     # if len(q_list_filtered) < len(q_list_filtered_bf)/3:
+#     #     q_list_filtered = q_list_filtered_bf
+#     #
+#     # print 'after w: ', len(q_list_filtered)
+#
+#     # print 'q_list: ', q_list
+#     # print 'q_list_filteredw: ', q_list_filtered
+#
+#     if len(q_list_final) < 1:
+#         # print 'REMOVED ALL (in function reject_quaternion_outliers)'
+#         return None
+#     else:
+#         # print 'len of q_list_filtered: ', len(q_list_filtered)
+#         # print 'REMOVED: ', (len(q_list) - len(q_list_filtered))
+#         # print str(len(q_list_filtered)) + '/' + str(len(q_list))
+#         return np.array(q_list_final)
 
-    axis = 2
-    i = 0
-    indices_rem = []  # indices we keep (NOT OUTLIERS)
-    while i < len(q_list_filtered):
-        dif_q = q_list_filtered[i][axis] - avg_q[axis]
-        #print 'thicc_dif_qz', dif_q
-        if np.abs(dif_q) < factor:
-            indices_rem.append(i)
-        i += 1
-    q_list_filtered = q_list_filtered[indices_rem]
-    # print 'af_z: ', len(q_list_filtered)
 
-    axis = 3
-    i = 0
-    indices_rem = []  # indices we keep (NOT OUTLIERS)
-    while i < len(q_list_filtered):
-        dif_q = q_list_filtered[i][axis] - avg_q[axis]
-        #print 'thicc_dif_qw', dif_q
-        if np.abs(dif_q) < factor:
-            indices_rem.append(i)
-        i += 1
-    q_list_filtered = q_list_filtered[indices_rem]
-    print 'thiccening ', len(q_list_filtered)*3
-
-    if len(q_list_filtered) < 1:
-        # print 'REMOVED ALL (in function reject_quaternion_outliers)'
-        return original_q_list
-    else:
-        q_list_filtered_ = np.concatenate((original_q_list,q_list_filtered))
-        q_list_filtered_ = np.concatenate((q_list_filtered_, q_list_filtered))
-        q_list_filtered_ = np.concatenate((q_list_filtered_, q_list_filtered))
-        # print 'q_list_orig: ', original_q_list
-        # print 'q_list_filt: ', q_list_filtered
-        return np.array(q_list_filtered_)
+# #Okay, this is really bad, dont use it, it messes everything up
+# def test_avg_q(q_list):
+#     e_list = []
+#     i = 0
+#     while i < len(q_list):
+#         e_list.insert(i, [euler_from_quaternion(q_list[i])[0], euler_from_quaternion(q_list[i])[1],
+#                           euler_from_quaternion(q_list[i])[2]])
+#         e_list[i] = [e_list[i][0] + np.pi, e_list[i][1] + np.pi, e_list[i][2] + np.pi]
+#         i += 1
+#     e_list = np.array(e_list)
+#
+#     return quaternion_from_euler(np.mean(e_list[:, 0]) - np.pi, np.mean(e_list[:, 1]) - np.pi, np.mean(e_list[:, 2]) - np.pi)
 
 
 def reject_quaternion_outliers(q_list, factor):
+    # TODO
+    #  currently here I am using the euler notation of the quaternions in order to determine how close they are
+    #  we never actually use the euler notation values for actual orientations
+    #  we only look at them to see how close two orientations are (easily in degrees)
+    #  however, I know euler can have issues and this may be a source of trouble
+    #  I couldn't quite find a better way, but maybe rethinking this could lead somewhere better
     e_list = []
     i = 0
     while i < len(q_list):
@@ -476,76 +605,31 @@ def reject_quaternion_outliers(q_list, factor):
 
     axis = 0
     i = 0
-    indices_rem = []  # indices we keep (NOT OUTLIERS)
+    indices_keep = []  # indices we keep (NOT OUTLIERS)
     while i < len(q_list):
         dif_q = avg_q[axis] - euler_from_quaternion(q_list[i])[axis]
-        # temp_str = "dif_qx: {}\t< {}"
-        # print temp_str.format(dif_q,factor)
         if np.abs(dif_q) < factor:
-            # print "TRUE (KEEP)"
-            indices_rem.append(i)
+            indices_keep.append(i)
         i += 1
-    # print "x says keep: ", indices_rem
-    q_list_filtered1 = q_list[indices_rem]
-    # print 'q-list-filtered-1: ', q_list_filtered1
 
     axis = 1
     i = 0
-    indices_rem = []  # indices we keep (NOT OUTLIERS)
     while i < len(q_list):
         dif_q = avg_q[axis] - euler_from_quaternion(q_list[i])[axis]
-        # temp_str = "dif_qy: {}\t< {}"
-        # print temp_str.format(dif_q, factor)
         if np.abs(dif_q) < factor:
-            # print "TRUE (KEEP)"
-            indices_rem.append(i)
+            indices_keep.append(i)
         i += 1
-    # print "y says keep: ", indices_rem
-    q_list_filtered2 = q_list[indices_rem]
 
     axis = 2
     i = 0
-    indices_rem = []  # indices we keep (NOT OUTLIERS)
+    indices_keep = []
     while i < len(q_list):
         dif_q = avg_q[axis] - euler_from_quaternion(q_list[i])[axis]
-        # temp_str = "dif_qz: {}\t< {}"
-        # print temp_str.format(dif_q, factor)
         if np.abs(dif_q) < factor:
-            # print "TRUE (KEEP)"
-            indices_rem.append(i)
+            indices_keep.append(i)
         i += 1
-    # print "z says keep: ", indices_rem
-    q_list_filtered3 = q_list[indices_rem]
 
-    q_list_final_pre = []
-    q_list_final = []
-    i = 0
-    while i < len(q_list_filtered1):
-        j = 0
-        while j < len(q_list_filtered2):
-            # temp_str = "{} v {}\t{} v {}\t{} v {}\t{} v {}"
-            # print temp_str.format(q_list_filtered1[i][0], q_list_filtered2[j][0],q_list_filtered1[i][1],q_list_filtered2[j][1],q_list_filtered1[i][2],q_list_filtered2[j][2],q_list_filtered1[i][3],q_list_filtered2[j][3])
-            if (q_list_filtered1[i][0] == q_list_filtered2[j][0]) and (q_list_filtered1[i][1] == q_list_filtered2[j][1]) and (q_list_filtered1[i][2] == q_list_filtered2[j][2]) and (q_list_filtered1[i][3] == q_list_filtered2[j][3]):
-                # print "WE IN BOIS!!!"
-                q_list_final_pre.append([q_list_filtered1[i][0],q_list_filtered1[i][1],q_list_filtered1[i][2], q_list_filtered1[i][3]])
-            j += 1
-        i += 1
-    # print "!!!!!!!!!!!!!!!!!!!!!!"
-    # print "q_list_final_pre: ", q_list_final_pre
-    i = 0
-    while i < len(q_list_final_pre):
-        j = 0
-        while j < len(q_list_filtered3):
-            # temp_str = "{} v {}\t{} v {}\t{} v {}\t{} v {}"
-            # print temp_str.format(q_list_final_pre[i][0], q_list_filtered3[j][0],q_list_final_pre[i][1], q_list_filtered3[j][1],q_list_final_pre[i][2], q_list_filtered3[j][2],q_list_final_pre[i][3],q_list_filtered3[j][3])
-            if (q_list_final_pre[i][0] == q_list_filtered3[j][0]) and (q_list_final_pre[i][1] == q_list_filtered3[j][1]) and (q_list_final_pre[i][2] == q_list_filtered3[j][2]) and (q_list_final_pre[i][3] == q_list_filtered3[j][3]):
-                # print "WE IN BOIS!!!"
-                q_list_final.append([q_list_final_pre[i][0],q_list_final_pre[i][1],q_list_final_pre[i][2], q_list_final_pre[i][3]])
-            j += 1
-        i += 1
-    # print "!!!!!!!!!!!!!!!!!!!!!!"
-    # print "q_list_final: ", q_list_final
-
+    q_list = q_list[de_dup(indices_keep)]
     # print 'remaining: ', len(q_list_final)
 
     # if len(q_list_filtered) < len(q_list_filtered_bf)/3:
@@ -556,14 +640,14 @@ def reject_quaternion_outliers(q_list, factor):
     # print 'q_list: ', q_list
     # print 'q_list_filteredw: ', q_list_filtered
 
-    if len(q_list_final) < 1:
+    if len(q_list) < 1:
         # print 'REMOVED ALL (in function reject_quaternion_outliers)'
         return None
     else:
         # print 'len of q_list_filtered: ', len(q_list_filtered)
         # print 'REMOVED: ', (len(q_list) - len(q_list_filtered))
         # print str(len(q_list_filtered)) + '/' + str(len(q_list))
-        return np.array(q_list_final)
+        return np.array(q_list)
 
 
 def average_position(xyz_list, rej_factor):
@@ -646,26 +730,29 @@ def average_orientation(q_list, rej_factor, depth = 0):
     """
     takes a list of quaternions and returns the average
     :param q_list: list of quaternions
-    :param rej_factor: determines how strictly outliers are removed
+    :param rej_factor: determines how strictly outliers are removed within x degrees
     :param depth: something f
     returns average quaternion
     if all list items are 'Outliers' and removed then return median quaternion
     """
+    rej_factor = rej_factor*np.pi/180
     q_list_filtered = reject_quaternion_outliers(q_list, rej_factor)
     # if all data is removed from removing outliers we take median value
 
     if q_list_filtered is None:
         # print 'RECURRSION'
-        if depth > 10:
-            print '!!!!!!!!!!!'
-            print '!!!UH OH!!!'
-            print '!!!!!!!!!!!'
-            #return slerp_q_list(q_list)
-            return None
+        # if depth > 10:
+        # print '!!!!!!!!!!!'
+        # print '!!!UH OH!!!'
+        # print '!!!!!!!!!!!'
+        print 'NO q\'s within {} degrees of avg q'.format(rej_factor*180/np.pi)
+        #     #return slerp_q_list(q_list)
+        return None
         # print 'q_list: ', q_list
         # return quaternion_median(q_list)
-        return average_orientation(q_list, rej_factor + 0.15, depth + 1)
+        # return average_orientation(q_list, rej_factor + 0.15, depth + 1)
     else:
+        print 'SLERPING'
         return slerp_q_list(q_list_filtered)
 
 
@@ -699,6 +786,8 @@ def test_function_Savitzky_Golay(q_list):
         i += 1
     return_list = np.array(return_list)
 
+    return return_list
+
     # plt.plot(x_axis, q_list[:,0], linewidth=2, linestyle="-", c="r")
     # plt.plot(x_axis, q_list[:,1], linewidth=2, linestyle="-", c="g")
     # plt.plot(x_axis, q_list[:,2], linewidth=2, linestyle="-", c="b")
@@ -722,21 +811,22 @@ def test_function_Savitzky_Golay(q_list):
     #         print (len(x_axis) - i)/len(x_axis)
     #     i += 1.0
     # print 'weights: ', weights
-    avg_q = q_average(return_list)
+    avg_q = test_avg_q(return_list)
+    #avg_q = q_average(return_list)
     #avg_q = quatWAvgMarkley(return_list,weights)
     #avg_q = quaternion_median(return_list)
 
-    list = []
+    mylist = []
     i = 0
     while i < len(x_axis):
-        list.append(avg_q)
+        mylist.append(avg_q)
         i += 1
-    list = np.array(list)
+    mylist = np.array(mylist)
 
-    plt.plot(x_axis, list[:, 0], linewidth=2, linestyle="--", c="r")
-    plt.plot(x_axis, list[:, 1], linewidth=2, linestyle="--", c="g")
-    plt.plot(x_axis, list[:, 2], linewidth=2, linestyle="--", c="b")
-    plt.plot(x_axis, list[:, 3], linewidth=2, linestyle="--", c="y")
+    plt.plot(x_axis, mylist[:, 0], linewidth=2, linestyle="--", c="r")
+    plt.plot(x_axis, mylist[:, 1], linewidth=2, linestyle="--", c="g")
+    plt.plot(x_axis, mylist[:, 2], linewidth=2, linestyle="--", c="b")
+    plt.plot(x_axis, mylist[:, 3], linewidth=2, linestyle="--", c="y")
 
     return avg_q
 
@@ -794,6 +884,8 @@ class HeadTracker:
             self.marker_pos_arr.insert(i, def_position)
             i += 1
 
+        self.prev_q = def_quat
+        self.prev_q2 = def_quat
         self.outPose = geometry_msgs.msg.PoseStamped()
         self.f = open("quat_data.txt", "w")
 
@@ -912,56 +1004,19 @@ class HeadTracker:
             # average orientation and position of all currently viewable markers
             t3 = time.time()
             if len(ids) > 1:
-                # averaging orientation
                 q_list = np.array(q_list)
+                # Averaging Orientation
+                q = average_orientation(q_list, 5)
+                if q is None:
+                    q = self.prev_q
+                self.prev_q = q
 
-                # # TEMP TODO
-                # e_list = []
-                # i = 0
-                # while i < len(q_list):
-                #     e_list.insert(i, [euler_from_quaternion(q_list[i])[0], euler_from_quaternion(q_list[i])[1],
-                #                       euler_from_quaternion(q_list[i])[2]])
-                #     e_list[i] = [e_list[i][0] + np.pi, e_list[i][1] + np.pi, e_list[i][2] + np.pi]
-                #     i += 1
-                # e_list = np.array(e_list)
-                # avg_q = [np.mean(e_list[:, 0]) - np.pi, np.mean(e_list[:, 1]) - np.pi, np.mean(e_list[:, 2]) - np.pi]
-                # self.f.write("Avg E: \t\t")
-                # self.f.write(str(avg_q))
-                # self.f.write("\n")
 
-                # q_list = reject_quaternion_outliers(q_list, 1)    # reject a bit garbage
-                #
-                # self.f.write("Filtered Quaternions:\n-------------------\n")
-                # q_list = np.array(q_list)
-                # i = 0
-                # while i < len(q_list):
-                #     self.f.write("Q: ")
-                #     self.f.write(str(q_list[i]))
-                #     self.f.write("\tE: ")
-                #     self.f.write(str(euler_from_quaternion(q_list[i])))
-                #     self.f.write("\n")
-                #     i += 1
-                # self.f.write("\n\n")
-                #
-                # # q_list = thicc(q_list,0.01)     # beef up decent numbers
-                # q = slerp_q_list(q_list)   # slerp them numbers
-
-                # test_function_Savitzky_Golay(q_list)
-                # plt.show()
-                # plt.close()
-
-                # # Averaging Orientation
-                # q = average_orientation(q_list, 3*np.pi/180)
-                # if q is None:
-                #     # print 'prev_q: ', self.marker_orient_arr
-                #     # print 'q we grab: ', self.marker_orient_arr[self.n_avg_previous_marker - 1]
-                #     #q = self.marker_orient_arr[self.n_avg_previous_marker - 1]
-                #     temp = np.array(copy.deepcopy(self.marker_orient_arr))
-                #     q = slerp_q_list(temp)
-                if len(q_list) > 2:
-                    q = test_function_Savitzky_Golay(q_list)
-                else:
-                    q = q_average(q_list)
+                # # TODO was doing last
+                # if len(q_list) > 2:
+                #     q = test_function_Savitzky_Golay(q_list)
+                # else:
+                #     q = q_average(q_list)
                 # plt.show()
                 # plt.close()
 
@@ -988,9 +1043,17 @@ class HeadTracker:
                 self.marker_orient_arr = self.marker_orient_arr[1:self.n_avg_previous_marker + 1]
                 q_list = np.array(self.marker_orient_arr)
                 # TODO
+                #  it almost seems as though not averaging across previous q's works better?
+                #  maybe there is something wrong with the way im storing the previous x poses
+                # q_list = test_function_Savitzky_Golay(q_list)
+                q = average_orientation(q_list, 3)
+                if q is None:
+                    q = self.prev_q2
+                self.prev_q2 = q
+
                 #q = average_orientation(q_list, 0.1)
                 #q_list = reject_quaternion_outliers(q_list,0.8)
-                q = quatWAvgMarkley(q_list) # <---what i was using
+                #q = quatWAvgMarkley(q_list) # <---what i was using
 
                 # q_list = reject_quaternion_outliers(q_list, 0.8)    # reject some more garbage
                 # q = slerp_q_list(q_list)    # slerp 'em
@@ -1142,7 +1205,7 @@ def head_track():
     # the less the users moves their head the less annoying the 'lag' will be
     # and having smooth stable position is important if we are using that as a basis
     # for the eye-tracking
-    n_previous_marker = 15  # 30 #12
+    n_previous_marker = 7  # 30 #12
 
     # Create object
     HT = HeadTracker(marker_size, camera_matrix, camera_distortion, parent_link, eye_height, eye_depth, image_topic,
