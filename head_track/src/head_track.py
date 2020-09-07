@@ -397,7 +397,7 @@ def quatWAvgMarkley(Q, weights=None):
 
 #I dont trust this either
 # def thicc(q_list, factor):
-#     # TODO
+#     #
 #     #  q's that are very close to average have copies added to the list
 #     avg_q = slerp_q_list(q_list)
 #     original_q_list = q_list
@@ -612,7 +612,7 @@ def reject_quaternion_outliers(q_list, factor):
     indices_to_remove = []  # indices we remove
     while i < len(q_list):
         dif_q = (avg_q[axis] - euler_from_quaternion(q_list[i])[axis] + np.pi + np.pi*2) % (2*np.pi) - np.pi
-        if np.abs(dif_q) > factor:
+        if np.abs(dif_q)*np.pi/180 > factor:
             indices_to_remove.append(i)
         i += 1
 
@@ -620,7 +620,7 @@ def reject_quaternion_outliers(q_list, factor):
     i = 0
     while i < len(q_list):
         dif_q = (avg_q[axis] - euler_from_quaternion(q_list[i])[axis] + np.pi + np.pi*2) % (2*np.pi) - np.pi
-        if np.abs(dif_q) > factor:
+        if np.abs(dif_q)*np.pi/180 > factor:
             indices_to_remove.append(i)
         i += 1
 
@@ -628,12 +628,12 @@ def reject_quaternion_outliers(q_list, factor):
     i = 0
     while i < len(q_list):
         dif_q = (avg_q[axis] - euler_from_quaternion(q_list[i])[axis] + np.pi + np.pi*2) % (2*np.pi) - np.pi
-        if np.abs(dif_q) > factor:
+        if np.abs(dif_q)*np.pi/180 > factor:
             indices_to_remove.append(i)
         i += 1
 
     # need to get indices to keep form indicies to remove
-    full_list = range(0,q_list.size())
+    full_list = range(0,len(q_list))
     indices_to_remove = de_dup(indices_to_remove)
     indices_to_keep = list(set(full_list) - set(indices_to_remove))
 
@@ -696,11 +696,12 @@ def average_position(xyz_list, rej_factor):
         i += 1
 
     # need to get indices to keep form indices to remove
-    full_list = range(0, t_list.size())
+    full_list = range(0, len(t_list))
     indices_to_remove = de_dup(indices_to_remove)
     indices_to_keep = list(set(full_list) - set(indices_to_remove))
 
-    t_list_final = np.array(indices_to_keep)
+    t_list_final = t_list[indices_to_keep]
+
 
     if len(t_list_final) < 1:
         return [np.mean(xyz_list[:, 0]), np.mean(xyz_list[:, 1]), np.mean(xyz_list[:, 2])]
@@ -740,79 +741,79 @@ def average_orientation(q_list, rej_factor):
         return slerp_q_list(q_list_filtered)
 
 
-def test_function_Savitzky_Golay(q_list):
-    # e_list = []
-    # i = 0
-    # while i < len(q_list):
-    #     e_list.insert(i, [euler_from_quaternion(q_list[i])[0], euler_from_quaternion(q_list[i])[1],
-    #                       euler_from_quaternion(q_list[i])[2]])
-    #     e_list[i] = [e_list[i][0] + np.pi, e_list[i][1] + np.pi, e_list[i][2] + np.pi]
-    #     i += 1
-    # e_list = np.array(e_list)
-    #
-    # avg_q = [np.mean(e_list[:, 0]) - np.pi, np.mean(e_list[:, 1]) - np.pi, np.mean(e_list[:, 2]) - np.pi]
-    # scipy.savgol_filter()
-    q_list = np.array(q_list)
-    x_axis = np.arange(1, len(q_list)+1, 1)  # x axis
-
-    window_len = len(x_axis)
-    if window_len % 2 == 0:
-        window_len -= 1
-    yx = savgol_filter(q_list[:,0], window_len, 2)
-    yy = savgol_filter(q_list[:,1], window_len, 2)
-    yz = savgol_filter(q_list[:,2], window_len, 2)
-    yw = savgol_filter(q_list[:,3], window_len, 2)
-
-    return_list = []
-    i = 0
-    while i < len(x_axis):
-        return_list.append([yx[i],yy[i],yz[i],yw[i]])
-        i += 1
-    return_list = np.array(return_list)
-
-    return return_list
-
-    # plt.plot(x_axis, q_list[:,0], linewidth=2, linestyle="-", c="r")
-    # plt.plot(x_axis, q_list[:,1], linewidth=2, linestyle="-", c="g")
-    # plt.plot(x_axis, q_list[:,2], linewidth=2, linestyle="-", c="b")
-    # plt.plot(x_axis, q_list[:,3], linewidth=2, linestyle="-", c="y")
-
-    plt.plot(x_axis, yx, linewidth=2, linestyle=":", c="r")
-    plt.plot(x_axis,  yy, linewidth=2, linestyle=":", c="g")
-    plt.plot(x_axis,  yz, linewidth=2, linestyle=":", c="b")
-    plt.plot(x_axis,  yw, linewidth=2, linestyle=":", c="y")
-
-    #avg_q = slerp_q_list(return_list)
-    #avg_q = quatWAvgMarkley(return_list)
-    # weights = []
-    # i = 0.0
-    # while i < len(x_axis):
-    #     if i < len(x_axis)/2:
-    #         weights.append(i/len(x_axis))
-    #         print i/len(x_axis)
-    #     else:
-    #         weights.append((len(x_axis) - i)/len(x_axis))
-    #         print (len(x_axis) - i)/len(x_axis)
-    #     i += 1.0
-    # print 'weights: ', weights
-    avg_q = test_avg_q(return_list)
-    #avg_q = q_average(return_list)
-    #avg_q = quatWAvgMarkley(return_list,weights)
-    #avg_q = quaternion_median(return_list)
-
-    mylist = []
-    i = 0
-    while i < len(x_axis):
-        mylist.append(avg_q)
-        i += 1
-    mylist = np.array(mylist)
-
-    plt.plot(x_axis, mylist[:, 0], linewidth=2, linestyle="--", c="r")
-    plt.plot(x_axis, mylist[:, 1], linewidth=2, linestyle="--", c="g")
-    plt.plot(x_axis, mylist[:, 2], linewidth=2, linestyle="--", c="b")
-    plt.plot(x_axis, mylist[:, 3], linewidth=2, linestyle="--", c="y")
-
-    return avg_q
+# def test_function_Savitzky_Golay(q_list):
+#     # e_list = []
+#     # i = 0
+#     # while i < len(q_list):
+#     #     e_list.insert(i, [euler_from_quaternion(q_list[i])[0], euler_from_quaternion(q_list[i])[1],
+#     #                       euler_from_quaternion(q_list[i])[2]])
+#     #     e_list[i] = [e_list[i][0] + np.pi, e_list[i][1] + np.pi, e_list[i][2] + np.pi]
+#     #     i += 1
+#     # e_list = np.array(e_list)
+#     #
+#     # avg_q = [np.mean(e_list[:, 0]) - np.pi, np.mean(e_list[:, 1]) - np.pi, np.mean(e_list[:, 2]) - np.pi]
+#     # scipy.savgol_filter()
+#     q_list = np.array(q_list)
+#     x_axis = np.arange(1, len(q_list)+1, 1)  # x axis
+#
+#     window_len = len(x_axis)
+#     if window_len % 2 == 0:
+#         window_len -= 1
+#     yx = savgol_filter(q_list[:,0], window_len, 2)
+#     yy = savgol_filter(q_list[:,1], window_len, 2)
+#     yz = savgol_filter(q_list[:,2], window_len, 2)
+#     yw = savgol_filter(q_list[:,3], window_len, 2)
+#
+#     return_list = []
+#     i = 0
+#     while i < len(x_axis):
+#         return_list.append([yx[i],yy[i],yz[i],yw[i]])
+#         i += 1
+#     return_list = np.array(return_list)
+#
+#     return return_list
+#
+#     # plt.plot(x_axis, q_list[:,0], linewidth=2, linestyle="-", c="r")
+#     # plt.plot(x_axis, q_list[:,1], linewidth=2, linestyle="-", c="g")
+#     # plt.plot(x_axis, q_list[:,2], linewidth=2, linestyle="-", c="b")
+#     # plt.plot(x_axis, q_list[:,3], linewidth=2, linestyle="-", c="y")
+#
+#     plt.plot(x_axis, yx, linewidth=2, linestyle=":", c="r")
+#     plt.plot(x_axis,  yy, linewidth=2, linestyle=":", c="g")
+#     plt.plot(x_axis,  yz, linewidth=2, linestyle=":", c="b")
+#     plt.plot(x_axis,  yw, linewidth=2, linestyle=":", c="y")
+#
+#     #avg_q = slerp_q_list(return_list)
+#     #avg_q = quatWAvgMarkley(return_list)
+#     # weights = []
+#     # i = 0.0
+#     # while i < len(x_axis):
+#     #     if i < len(x_axis)/2:
+#     #         weights.append(i/len(x_axis))
+#     #         print i/len(x_axis)
+#     #     else:
+#     #         weights.append((len(x_axis) - i)/len(x_axis))
+#     #         print (len(x_axis) - i)/len(x_axis)
+#     #     i += 1.0
+#     # print 'weights: ', weights
+#     avg_q = test_avg_q(return_list)
+#     #avg_q = q_average(return_list)
+#     #avg_q = quatWAvgMarkley(return_list,weights)
+#     #avg_q = quaternion_median(return_list)
+#
+#     mylist = []
+#     i = 0
+#     while i < len(x_axis):
+#         mylist.append(avg_q)
+#         i += 1
+#     mylist = np.array(mylist)
+#
+#     plt.plot(x_axis, mylist[:, 0], linewidth=2, linestyle="--", c="r")
+#     plt.plot(x_axis, mylist[:, 1], linewidth=2, linestyle="--", c="g")
+#     plt.plot(x_axis, mylist[:, 2], linewidth=2, linestyle="--", c="b")
+#     plt.plot(x_axis, mylist[:, 3], linewidth=2, linestyle="--", c="y")
+#
+#     return avg_q
 
 
 class HeadTracker:
@@ -967,7 +968,7 @@ class HeadTracker:
 
             t2 = time.time()
 
-            # # TODO
+            # #
             # # HARDCODE TEST ORIENTATION AND POSITIONS
             # q = [0, 0, 0, 1]
             # q_list = [[0, 0, 0, 1],[0, 0, 0.0871557, 0.9961947],[0, 0, -0.0871557, 0.9961947],[ 0, 0, -0.3826834, 0.9238795],[0, 0, 0.3826834, 0.9238795],[0, 0, 0.5735764, 0.819152],[0, 0, -0.5735764, 0.819152]]
@@ -996,7 +997,7 @@ class HeadTracker:
                 self.prev_q = q
 
 
-                # # TODO was doing last
+                # # was doing last
                 # if len(q_list) > 2:
                 #     q = test_function_Savitzky_Golay(q_list)
                 # else:
@@ -1030,7 +1031,7 @@ class HeadTracker:
                 #  it almost seems as though not averaging across previous q's works better?
                 #  maybe there is something wrong with the way im storing the previous x poses
                 # q_list = test_function_Savitzky_Golay(q_list)
-                q = average_orientation(q_list, 3)
+                q = average_orientation(q_list, 2)
                 if q is None:
                     q = self.prev_q2
                 self.prev_q2 = q
