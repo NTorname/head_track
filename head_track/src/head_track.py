@@ -51,7 +51,7 @@ def move_xyz_along_axis(xyz, q_orientation, axis, distance):
     if axis == "y" or axis == "Y":
         q_rot = [0, 0, 0.7071068, 0.7071068]
         q_orientation = mul_quaternion(q_orientation, q_rot)
-    elif axis == "z" or axis == "z":
+    elif axis == "z" or axis == "Z":
         q_rot = [0, 0.7071068, 0, 0.7071068]
         q_orientation = mul_quaternion(q_orientation, q_rot)
 
@@ -99,7 +99,7 @@ def aa2quatSam(aa):
     return q
 
 
-def reject_outliers(data_in, factor=0.8 * test_val):
+def reject_outliers(data_in, factor=0.8):
     """
     takes a list of data and removes outliers
     :param data_in: raw data []
@@ -601,13 +601,24 @@ def reject_quaternion_outliers(q_list, factor):
     e_list = np.array(e_list)
 
     avg_q = [np.mean(e_list[:, 0])-np.pi, np.mean(e_list[:, 1])-np.pi, np.mean(e_list[:, 2])-np.pi]
+    # (RESOLVED)
+    #  2pi is close to 0
+    #  but i dont account for that
+
+
+
     # print "avg_e: ", avg_q
 
+
+    # TODO
+    #  cant keep appending i
+    #  might have been rejected by previous axis?
+    #  im sure ill understnad this later
     axis = 0
     i = 0
     indices_keep = []  # indices we keep (NOT OUTLIERS)
     while i < len(q_list):
-        dif_q = avg_q[axis] - euler_from_quaternion(q_list[i])[axis]
+        dif_q = (avg_q[axis] - euler_from_quaternion(q_list[i])[axis] + np.pi + np.pi*2) % (2*np.pi) - np.pi
         if np.abs(dif_q) < factor:
             indices_keep.append(i)
         i += 1
@@ -615,7 +626,7 @@ def reject_quaternion_outliers(q_list, factor):
     axis = 1
     i = 0
     while i < len(q_list):
-        dif_q = avg_q[axis] - euler_from_quaternion(q_list[i])[axis]
+        dif_q = (avg_q[axis] - euler_from_quaternion(q_list[i])[axis] + np.pi + np.pi*2) % (2*np.pi) - np.pi
         if np.abs(dif_q) < factor:
             indices_keep.append(i)
         i += 1
@@ -624,7 +635,7 @@ def reject_quaternion_outliers(q_list, factor):
     i = 0
     indices_keep = []
     while i < len(q_list):
-        dif_q = avg_q[axis] - euler_from_quaternion(q_list[i])[axis]
+        dif_q = (avg_q[axis] - euler_from_quaternion(q_list[i])[axis] + np.pi + np.pi*2) % (2*np.pi) - np.pi
         if np.abs(dif_q) < factor:
             indices_keep.append(i)
         i += 1
@@ -650,6 +661,7 @@ def reject_quaternion_outliers(q_list, factor):
         return np.array(q_list)
 
 
+# TODO fix this
 def average_position(xyz_list, rej_factor):
     # look at x, rem some from list
     # look at y, same
@@ -726,7 +738,7 @@ def average_position(xyz_list, rej_factor):
         return [np.mean(t_list_final[:, 0]), np.mean(t_list_final[:, 1]), np.mean(t_list_final[:, 2])]
 
 
-def average_orientation(q_list, rej_factor, depth = 0):
+def average_orientation(q_list, rej_factor):
     """
     takes a list of quaternions and returns the average
     :param q_list: list of quaternions
