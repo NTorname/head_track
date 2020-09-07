@@ -601,46 +601,44 @@ def reject_quaternion_outliers(q_list, factor):
     e_list = np.array(e_list)
 
     avg_q = [np.mean(e_list[:, 0])-np.pi, np.mean(e_list[:, 1])-np.pi, np.mean(e_list[:, 2])-np.pi]
-    # (RESOLVED)
-    #  2pi is close to 0
-    #  but i dont account for that
-
-
-
-    # print "avg_e: ", avg_q
 
 
     # TODO
     #  cant keep appending i
     #  might have been rejected by previous axis?
     #  im sure ill understnad this later
+    #  should mark indices to remove
     axis = 0
     i = 0
-    indices_keep = []  # indices we keep (NOT OUTLIERS)
+    indices_to_remove = []  # indices we remove
     while i < len(q_list):
         dif_q = (avg_q[axis] - euler_from_quaternion(q_list[i])[axis] + np.pi + np.pi*2) % (2*np.pi) - np.pi
-        if np.abs(dif_q) < factor:
-            indices_keep.append(i)
+        if np.abs(dif_q) > factor:
+            indices_to_remove.append(i)
         i += 1
 
     axis = 1
     i = 0
     while i < len(q_list):
         dif_q = (avg_q[axis] - euler_from_quaternion(q_list[i])[axis] + np.pi + np.pi*2) % (2*np.pi) - np.pi
-        if np.abs(dif_q) < factor:
-            indices_keep.append(i)
+        if np.abs(dif_q) > factor:
+            indices_to_remove.append(i)
         i += 1
 
     axis = 2
     i = 0
-    indices_keep = []
     while i < len(q_list):
         dif_q = (avg_q[axis] - euler_from_quaternion(q_list[i])[axis] + np.pi + np.pi*2) % (2*np.pi) - np.pi
-        if np.abs(dif_q) < factor:
-            indices_keep.append(i)
+        if np.abs(dif_q) > factor:
+            indices_to_remove.append(i)
         i += 1
 
-    q_list = q_list[de_dup(indices_keep)]
+    # need to get indices to keep form indicies to remove
+    full_list = range(0,q_list.size())
+    indices_to_remove = de_dup(indices_to_remove)
+    indices_to_keep = list(set(full_list) - set(indices_to_remove))
+
+    q_list = q_list[indices_to_keep]
     # print 'remaining: ', len(q_list_final)
 
     # if len(q_list_filtered) < len(q_list_filtered_bf)/3:
