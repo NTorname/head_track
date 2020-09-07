@@ -602,11 +602,10 @@ def reject_quaternion_outliers(q_list, factor):
 
     avg_q = [np.mean(e_list[:, 0])-np.pi, np.mean(e_list[:, 1])-np.pi, np.mean(e_list[:, 2])-np.pi]
 
-
-    # TODO
+    # (RESOLVED)
     #  cant keep appending i
     #  might have been rejected by previous axis?
-    #  im sure ill understnad this later
+    #  im sure ill understand this later
     #  should mark indices to remove
     axis = 0
     i = 0
@@ -659,7 +658,6 @@ def reject_quaternion_outliers(q_list, factor):
         return np.array(q_list)
 
 
-# TODO fix this
 def average_position(xyz_list, rej_factor):
     # look at x, rem some from list
     # look at y, same
@@ -673,60 +671,36 @@ def average_position(xyz_list, rej_factor):
 
     axis = 0
     # if avg x - current x < rej then keep
-    indices_rem = []
+    indices_to_remove = []
     i = 0
     while i < len(t_list):
         dif_t = np.abs(avg_xyz[axis] - t_list[i][axis])
-        if dif_t < rej_factor:
-            indices_rem.append(i)
+        if dif_t > rej_factor:
+            indices_to_remove.append(i)
         i += 1
-    t_list_filtered1 = t_list[indices_rem]
 
     axis = 1
-    indices_rem = []
     i = 0
     while i < len(t_list):
         dif_t = np.abs(avg_xyz[axis] - t_list[i][axis])
-        if dif_t < rej_factor:
-            indices_rem.append(i)
+        if dif_t > rej_factor:
+            indices_to_remove.append(i)
         i += 1
-    t_list_filtered2 = t_list[indices_rem]
 
     axis = 2
-    indices_rem = []
     i = 0
     while i < len(t_list):
         dif_t = np.abs(avg_xyz[axis] - t_list[i][axis])
-        if dif_t < rej_factor:
-            indices_rem.append(i)
-        i += 1
-    t_list_filtered3 = t_list[indices_rem]
-
-    t_list_final = []
-    t_list_final_pre = []
-
-    # IF CLOSE TO AVG ON ALL AXIS THEN WE KEEP IT
-    i = 0
-    while i < len(t_list_filtered1):
-        j = 0
-        while j < len(t_list_filtered2):
-            if (t_list_filtered1[i][0] == t_list_filtered2[j][0]) and (t_list_filtered1[i][1] == t_list_filtered2[j][1]) and (t_list_filtered1[i][2] == t_list_filtered2[j][2]):
-                t_list_final_pre.append([t_list_filtered1[i][0],t_list_filtered1[i][1],t_list_filtered1[i][2]])
-            j += 1
+        if dif_t > rej_factor:
+            indices_to_remove.append(i)
         i += 1
 
-    i = 0
-    while i < len(t_list_final_pre):
-        j = 0
-        while j < len(t_list_filtered3):
-            if (t_list_final_pre[i][0] == t_list_filtered3[j][0]) and (
-                    t_list_final_pre[i][1] == t_list_filtered3[j][1]) and (
-                    t_list_final_pre[i][2] == t_list_filtered3[j][2]):
-                t_list_final.append([t_list_final_pre[i][0], t_list_final_pre[i][1], t_list_final_pre[i][2]])
-            j += 1
-        i += 1
+    # need to get indices to keep form indices to remove
+    full_list = range(0, t_list.size())
+    indices_to_remove = de_dup(indices_to_remove)
+    indices_to_keep = list(set(full_list) - set(indices_to_remove))
 
-    t_list_final = np.array(t_list_final)
+    t_list_final = np.array(indices_to_keep)
 
     if len(t_list_final) < 1:
         return [np.mean(xyz_list[:, 0]), np.mean(xyz_list[:, 1]), np.mean(xyz_list[:, 2])]
