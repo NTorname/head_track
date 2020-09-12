@@ -12,7 +12,7 @@ tape aruco marker to your head
 
 <h2>mentions</h2>
 
-code heavily based on the work of  Tiziano Fiorenzani
+code heavily based on the work of  Tiziano Fiorenzani (not any more I dont think)
 
 
 <br />
