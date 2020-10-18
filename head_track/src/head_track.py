@@ -2,7 +2,6 @@
 # python
 import time
 import copy
-import array
 
 # ros
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
@@ -11,29 +10,15 @@ import sensor_msgs.msg, geometry_msgs.msg
 import rospy
 import tf
 
-# scipy
-import scipy
+# numpy
 import numpy as np
-import matplotlib.pyplot as plt
-from scipy.signal import lfilter
-from scipy.signal import savgol_filter
 
 # cv
 import cv2.aruco, cv2
 from cv_bridge import CvBridge
 
-# used to generate random testing values
-from opensimplex import OpenSimplex
-
-# import pfilter
-from pykalman import KalmanFilter
-import pykalman
-from pykalman import UnscentedKalmanFilter
-
 # set up link between ros topics and opencv
 bridge = CvBridge()
-
-test_val = 0
 
 
 # This is mostly working, so im just going to leave it
@@ -101,21 +86,6 @@ def aa2quatSam(aa):
     return q
 
 
-def reject_outliers(data_in, factor=0.8):
-    """
-    takes a list of data and removes outliers
-    :param data_in: raw data []
-    :param factor: determines how strictly outliers are removed
-    returns data w/out outliers []
-    """
-    quant3, quant1 = np.percentile(data_in, [75, 25])
-    iqr = quant3 - quant1
-    iqr_sigma = iqr / 1.34896
-    med_data = np.median(data_in)
-    data_out = [x for x in data_in if ((x > med_data - factor * iqr_sigma) and (x < med_data + factor * iqr_sigma))]
-    return data_out
-
-
 def mul_quaternion(quaternion_1, quaternion_0):
     """
     used to multiply quaternions - mul one by the other to rotate
@@ -133,20 +103,12 @@ def mul_quaternion(quaternion_1, quaternion_0):
     return result
 
 
-def conj_quat(q):
-    return [-q[0], -q[1], -q[2], q[3]]
-
-
 def norm_quat(q):
     q_x = q[0]
     q_y = q[1]
     q_z = q[2]
     q_w = q[3]
     return np.sqrt(q_x * q_x + q_y * q_y + q_z * q_z + q_w * q_w)
-
-
-def sum_of_squares(q):
-    return np.dot(q, q)
 
 
 def is_unit_quat(q, tolerance=1e-14):
@@ -156,7 +118,7 @@ def is_unit_quat(q, tolerance=1e-14):
     Returns:
         `True` if the Quaternion object is of unit length to within the specified tolerance value. `False` otherwise.
     """
-    return abs(1.0 - sum_of_squares(q)) < tolerance  # if _sum_of_squares is 1, norm is 1. This saves a call to sqrt()
+    return abs(1.0 - np.dot(q, q)) < tolerance  # if np.dot(q, q) is 1, norm is 1. This saves a call to sqrt()
 
 
 def normalize_quat(q):
@@ -194,27 +156,6 @@ def fast_normalize_quat(q):
         return q_orig
 
 
-def inverse_quat(q):
-    q_c = conj_quat(q)
-    q_conj_x = q_c[0]
-    q_conj_y = q_c[1]
-    q_conj_z = q_c[2]
-    q_conj_w = q_c[3]
-
-    q_norm = norm_quat(q)
-
-    q_inv_x = q_conj_x / (q_norm * q_norm)
-    q_inv_y = q_conj_y / (q_norm * q_norm)
-    q_inv_z = q_conj_z / (q_norm * q_norm)
-    q_inv_w = q_conj_w / (q_norm * q_norm)
-
-    return [q_inv_x, q_inv_y, q_inv_z, q_inv_w]
-
-
-def divide_quat(q1, q2):
-    return mul_quaternion(q1, inverse_quat(q2))
-
-
 def slerp(q0, q1, amount=0.5):
     """Spherical Linear Interpolation between quaternions.
     Implemented as described in https://en.wikipedia.org/wiki/Slerp
@@ -235,8 +176,8 @@ def slerp(q0, q1, amount=0.5):
             Calling this method will implicitly normalise the endpoints to unit quaternions if they are not already unit length.
     """
     # Ensure quaternion inputs are unit quaternions and 0 <= amount <=1
-    q0 = normalize_quat(q0) #fast_normalize_quat(q0) change
-    q1 = normalize_quat(q1) #fast_normalize_quat(q1) change
+    q0 = normalize_quat(q0)  # fast_normalize_quat(q0) change
+    q1 = normalize_quat(q1)  # fast_normalize_quat(q1) change
     amount = np.clip(amount, 0, 1)
 
     dot = np.dot(q0, q1)
@@ -251,7 +192,7 @@ def slerp(q0, q1, amount=0.5):
     # sin_theta_0 can not be zero
     if dot > 0.9995:
         qr = q0 + amount * (q1 - q0)
-        qr = normalize_quat(qr) #fast_normalize_quat(qr) change
+        qr = normalize_quat(qr)  # fast_normalize_quat(qr) change
         return qr
 
     theta_0 = np.arccos(dot)  # Since dot is in range [0, 0.9995], np.arccos() is safe
@@ -263,7 +204,7 @@ def slerp(q0, q1, amount=0.5):
     s0 = np.cos(theta) - dot * sin_theta / sin_theta_0
     s1 = sin_theta / sin_theta_0
     qr = (s0 * q0) + (s1 * q1)
-    qr = normalize_quat(qr) #fast_normalize_quat(qr) change
+    qr = normalize_quat(qr)  # fast_normalize_quat(qr) change
     return qr
 
 
@@ -274,10 +215,10 @@ def slerp_q_list(q_list):
         q_avg = slerp(q_list[0], q_list[1])
         i = 2
         while i < len(q_list):
-            #print 'q_avg: ', q_avg
-            #print 'q_list[i]: ', q_list[i]
+            # print 'q_avg: ', q_avg
+            # print 'q_list[i]: ', q_list[i]
             q_avg = slerp(q_avg, q_list[i])
-            #print 'new_q_avg: ', q_avg
+            # print 'new_q_avg: ', q_avg
             i += 1
         return q_avg
     elif len(q_list) == 2:
@@ -291,13 +232,13 @@ def q_average(Q):
     A = np.zeros((4, 4))
     M = Q.shape[0]
     for i in range(M):
-        q = Q[i,:]
+        q = Q[i, :]
         if q[3] < 0:
             q = -q
         A += np.outer(q, q)
     A /= M
 
-    eigvals, eigvecs = np.linalg.eig(np.matmul(Q.T,Q))
+    eigvals, eigvecs = np.linalg.eig(np.matmul(Q.T, Q))
     return eigvecs[:, eigvals.argmax()]
 
 
@@ -329,14 +270,10 @@ def quatWAvgMarkley(Q, weights=None):
     return np.linalg.eigh(A)[1][:, -1]
 
 
-def de_dup(mylist):
-    return list(dict.fromkeys(mylist))
-
-
 def approximately(quaternion_1, q_value, acceptable_range):
-    #print 'dot product: ', np.abs(np.dot(quaternion_1, q_value))
-    #print 'acceptable_range: ', acceptable_range
-    #print 'OUT: ', 1 - (np.abs(np.dot(quaternion_1, q_value)) < acceptable_range)
+    # print 'dot product: ', np.abs(np.dot(quaternion_1, q_value))
+    # print 'acceptable_range: ', acceptable_range
+    # print 'OUT: ', 1 - (np.abs(np.dot(quaternion_1, q_value)) < acceptable_range)
     return 1 - (np.abs(np.dot(quaternion_1, q_value)) < acceptable_range)
 
 
@@ -366,6 +303,26 @@ def reject_quaternion_outliers(q_list, comparison_q, rej_factor):
     q_list = q_list[indices_to_keep]
 
     return q_list
+
+
+def approximately_pos(pos_1, compare_v, acceptable_range):
+    return np.abs(pos_1[0] - compare_v[0]) < acceptable_range and np.abs(
+        pos_1[1] - compare_v[1]) < acceptable_range and np.abs(pos_1[2] - compare_v[2]) < acceptable_range
+
+
+def reject_position_outliers(t_list, comparison_t, rej_factor):
+    indices_to_keep = []
+    t_list = np.array(t_list)
+    i = 0
+    while i < len(t_list):
+        if approximately_pos(t_list[i], comparison_t, rej_factor):
+            # want to keep! save the index!
+            indices_to_keep.append(i)
+        i += 1
+    # print "removed ", len(t_list)-len(indices_to_keep), "/", len(t_list), " from t_list"
+    t_list = t_list[indices_to_keep]
+
+    return t_list
 
 
 class HeadTracker:
@@ -424,7 +381,6 @@ class HeadTracker:
         self.prev_q = def_quat
         self.prev_q2 = def_quat
         self.outPose = geometry_msgs.msg.PoseStamped()
-        self.f = open("quat_data.txt", "w")
 
     def callback(self, raw_frame):
         t_total_first = time.time()
@@ -461,8 +417,9 @@ class HeadTracker:
                 current_id = ids[i]
                 q = aa2quat((rvec[0][0]))
                 tvec = tvec[0][0]
-                tvec = [tvec[0] / 10, tvec[1] / 10, tvec[2] / 10]
-                move_cm = -0.175 / 4    #idk why this has to be divided by 4 instead of by 2 like id expect
+                # tvec = [tvec[0] / 10, tvec[1] / 10, tvec[2] / 10]
+                # !!!
+                move_cm = -0.175 / 4
                 tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
                 if current_id == self.id_back:
                     # adjust angle 90 degrees ccw
@@ -519,40 +476,26 @@ class HeadTracker:
                 t_list.append(tvec)
 
             t2 = time.time()
-
-            # # OVERRIDING WITH RANDOM VALUES SO I DON'T HAVE TO PUT THAT FREAKING HAT ON TO TEST STUFF EVERYTIME
-            # i = 0
-            # global test_val
-            # np.random.seed(0)
-            # # noise = generate_perlin_noise_3d(
-            # #     (32, 256, 256), (2, 8, 8), tileable=(True, False, False)
-            # # )
-            # simplex = OpenSimplex()
-            #
-            # q_list = np.array(q_list)
-            # print 'q_list bf: ', q_list
-            #
-            # while i < len(q_list):
-            #     # grab rand values from 3d perlin noise
-            #     xyz = [np.interp(simplex.noise3d(test_val,75,75),[-1,1],[0,360]),np.interp(simplex.noise3d(test_val,250,75),[-1,1],[0,360]),np.interp(simplex.noise3d(test_val,75,250),[-1,1],[0,360])]
-            #     if not i % (len(q_list)/2):
-            #         print 'random'
-            #         xyz[0] = xyz[0]+np.interp(np.random.rand(),[0,1],[0,180])
-            #         xyz[1] = xyz[1]+np.interp(np.random.rand(),[0,1],[0,180])
-            #         xyz[2] = xyz[2]+np.interp(np.random.rand(),[0,1],[0,180])
-            #     else:
-            #         print 'nonrandom'
-            #
-            #     q_list[i] = quaternion_from_euler(xyz[0],xyz[1],xyz[2])
-            #     test_val += 0.0001
-            #     i += 1
-            #
-            # q_list = np.array(q_list)
-            # print 'q_list: ', q_list
-            #
-            # # END RANDOM
-
             q_list = np.array(q_list)
+
+            # # testing###
+            # # publishes tf for every marker
+            # i = 0
+            # while i < len(t_list):
+            #     pose2 = geometry_msgs.msg.PoseStamped()
+            #     header2 = HeaderMsg()
+            #     header2.frame_id = self.parent_link
+            #     header2.stamp = rospy.Time.now()
+            #     pose2.header = header2
+            #     pose2.pose.position.x = t_list[i][0]
+            #     pose2.pose.position.y = t_list[i][1]
+            #     pose2.pose.position.z = t_list[i][2]
+            #     pose2.pose.orientation.x = q_list[i][0]
+            #     pose2.pose.orientation.y = q_list[i][1]
+            #     pose2.pose.orientation.z = q_list[i][2]
+            #     pose2.pose.orientation.w = q_list[i][3]
+            #     self.publish(pose2, "test" + str(i))
+            #     i += 1
 
             # average orientation and position of all currently viewable markers
             t3 = time.time()
@@ -565,9 +508,9 @@ class HeadTracker:
                 # [1b] if all list items are removed
                 # handle it
                 if len(q_list) < 1:
-                    print "orientation 1 FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+                    print "All items removed from QUATERNION of CURRENT markers"
                     # idk, use last good q?
-                    q = self.marker_orient_arr[self.n_avg_previous_marker-1]
+                    q = self.marker_orient_arr[self.n_avg_previous_marker - 1]
                 else:
                     # [2] find the average position between
                     # remaining values in the list using SLERP
@@ -580,12 +523,12 @@ class HeadTracker:
                 # returns list
                 t_list = np.array(t_list)
                 avg_xyz = [np.average(t_list[:, 0]), np.average(t_list[:, 1]), np.average(t_list[:, 2])]
-                t_list = reject_quaternion_outliers(t_list, avg_xyz, 0.6)
+                t_list = reject_position_outliers(t_list, avg_xyz, 0.03)
 
                 # [1b] if all list items are removed
                 # handle it
                 if len(t_list) < 1:
-                    print "position 1 FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+                    print "All items removed from POSITION of CURRENT markers"
                     # avg all t_list
                     tvec = avg_xyz
                 else:
@@ -605,14 +548,15 @@ class HeadTracker:
                 # [2a] remove outliers by
                 # comparing list to most recent item on list
                 q_list = np.array(self.marker_orient_arr)
-                q_list = reject_quaternion_outliers(q_list, self.marker_orient_arr[self.n_avg_previous_marker-1], 0.90)
+                q_list = reject_quaternion_outliers(q_list, self.marker_orient_arr[self.n_avg_previous_marker - 1],
+                                                    0.90)
 
                 # [2b] if all list items are removed
                 # handle it
                 if len(q_list) < 1:
-                    print "orientation 2 FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+                    print "All items removed from QUATERNION of PREVIOUS markers"
                     # use last good q?
-                    q = self.marker_orient_arr[self.n_avg_previous_marker-1]
+                    q = self.marker_orient_arr[self.n_avg_previous_marker - 1]
                 else:
                     # [3] ind the average position between
                     # remaining values in the list using SLERP
@@ -623,7 +567,7 @@ class HeadTracker:
                 # [1] append new tvec to list of previous positions
                 # then remove oldest
                 self.marker_pos_arr.append(copy.deepcopy(tvec))
-                self.marker_pos_arr.pop(0) # remove oldest position
+                self.marker_pos_arr.pop(0)  # remove oldest position
 
                 # [2a] remove outliers by
                 # comparing list to specified xyz
@@ -631,12 +575,12 @@ class HeadTracker:
                 t_list = np.array(self.marker_pos_arr)
                 t_list_copy = t_list
                 avg_xyz = [np.average(t_list[:, 0]), np.average(t_list[:, 1]), np.average(t_list[:, 2])]
-                t_list = reject_quaternion_outliers(t_list, avg_xyz, 0.8)
+                t_list = reject_position_outliers(t_list, avg_xyz, 0.01)
 
                 # [2b] if all list items are removed
                 # handle it
                 if len(t_list) < 1:
-                    print "position 2 FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+                    print "All items removed from POSITION of PREVIOUS markers"
                     # avg across all
                     tvec = [np.average(t_list_copy[:, 0]), np.average(t_list_copy[:, 1]), np.average(t_list_copy[:, 2])]
                     pass
@@ -677,7 +621,7 @@ class HeadTracker:
         # display frame
         self.pubIm.publish(bridge.cv2_to_imgmsg(frame, encoding="passthrough"))
 
-        self.publish(self.outPose)
+        self.publish(self.outPose, "/tracking_markers")
         # print 'pose: ', self.outPose
 
         t_total_last = time.time()
@@ -688,7 +632,7 @@ class HeadTracker:
         # br = tf.TransformBroadcaster()
         # br.sendTransform(t, q, rospy.Time.now(), "/new", self.parent_link)
 
-    def publish(self, pose):
+    def publish(self, pose, name):
         if pose is None:
             pose = self.final_pose
         # publish pose
@@ -706,7 +650,8 @@ class HeadTracker:
         q[3] = pose.pose.orientation.w
 
         br = tf.TransformBroadcaster()
-        br.sendTransform(t, q, rospy.Time.now(), "/tracking_markers", self.parent_link)
+        #br.sendTransform(t, q, rospy.Time.now(), "/tracking_markers", self.parent_link)
+        br.sendTransform(t, q, rospy.Time.now(), name, self.parent_link)
 
         # move ray down to shoot from user's eye-line
         # move down x cm and forward x cm
@@ -725,7 +670,7 @@ def head_track():
     #  (oh yeah and multiply it by 10, idk why but it tracks better, i divide distance by 10 later)
     # marker_size
     # marker_size = 0.065   # 1x1
-    marker_size = 0.03 * 10  # 2x2
+    marker_size = 0.03 # * 10  # 2x2
     # marker_size = 0.02  # 3x3
 
     # get camera calibration
@@ -753,7 +698,7 @@ def head_track():
     # the less the users moves their head the less annoying the 'lag' will be
     # and having smooth stable position is important if we are using that as a basis
     # for the eye-tracking
-    n_previous_marker = 5  # minimum 1
+    n_previous_marker = 7  # minimum 1
 
     # Create object
     HT = HeadTracker(marker_size, camera_matrix, camera_distortion, parent_link, eye_height, eye_depth, image_topic,
