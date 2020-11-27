@@ -23,6 +23,7 @@ bridge = CvBridge()
 
 # This is mostly working, so im just going to leave it
 # close enough for now.
+# I plan to replace this with tf stuff i think
 def move_xyz_along_axis(xyz, q_orientation, axis, distance):
     xyz = copy.deepcopy(xyz)
     q_orientation = copy.deepcopy(q_orientation)
@@ -209,8 +210,12 @@ def slerp(q0, q1, amount=0.5):
 
 
 def slerp_q_list(q_list):
-    # slerp 'avgs' between list of q's
-    # avg between first 2, take thant, avg it against next, repeat
+    """
+    slerps all the quaternions to 'avg' them
+    avg between first 2, take thant, avg it against next, repeat
+    param q_list: list of quaternions
+    returns: single quaternion
+    """
     if len(q_list) > 2:
         q_avg = slerp(q_list[0], q_list[1])
         i = 2
@@ -229,6 +234,11 @@ def slerp_q_list(q_list):
 
 
 def q_average(Q):
+    """
+    Averages quaternions
+    :param Q: (ndarray): an Mx4 ndarray of quaternions.
+    returns: single quaternion
+    """
     A = np.zeros((4, 4))
     M = Q.shape[0]
     for i in range(M):
@@ -242,38 +252,14 @@ def q_average(Q):
     return eigvecs[:, eigvals.argmax()]
 
 
-def quatWAvgMarkley(Q, weights=None):
+def approximately_orientation(quaternion_1, q_value, acceptable_range):
     """
-    Averages quaternions
-    :param Q: (ndarray): an Mx4 ndarray of quaternions.
-    :param weights: (list): an M elements list, a weight for each quaternion.
-    returns single quaternion
+    Determines if quaternion_1 is approximately equal to q_value
+    param quaternion_1: quaternion
+    param q_value: quaternion we compare against
+    param acceptable_range: range that is acceptable
+    returns: 1 if approximately equal, 0 otherwise
     """
-    if weights is None:
-        weights = []
-        i = 0
-        while i < Q.shape[0]:
-            weights.append(1)
-            i += 1
-    # Form the symmetric accumulator matrix
-    A = np.zeros((4, 4))
-    M = Q.shape[0]
-    wSum = 0
-    for i in range(M):
-        q = Q[i, :]
-        w_i = weights[i]
-        A += w_i * (np.outer(q, q))  # rank 1 update
-        wSum += w_i
-    # scale
-    A /= wSum
-    # Get the eigenvector corresponding to largest eigen value
-    return np.linalg.eigh(A)[1][:, -1]
-
-
-def approximately(quaternion_1, q_value, acceptable_range):
-    # print 'dot product: ', np.abs(np.dot(quaternion_1, q_value))
-    # print 'acceptable_range: ', acceptable_range
-    # print 'OUT: ', 1 - (np.abs(np.dot(quaternion_1, q_value)) < acceptable_range)
     return 1 - (np.abs(np.dot(quaternion_1, q_value)) < acceptable_range)
 
 
@@ -287,7 +273,7 @@ def reject_quaternion_outliers(q_list, comparison_q, rej_factor):
     less than the factor
     param q_list: list of quaternions
     param comparison_q: quaternion we compare against
-    param rejection_angle: rej_factor (similarity from 0 to 1)
+    param rej_factor: rej_factor (similarity from 0 to 1)
     returns: list of quaternions with outliers removed
     """
     # [1] check if each quaternion in list is approximately equal to the
@@ -296,7 +282,7 @@ def reject_quaternion_outliers(q_list, comparison_q, rej_factor):
     q_list = np.array(q_list)
     i = 0
     while i < len(q_list):
-        if approximately(q_list[i], comparison_q, rej_factor):
+        if approximately_orientation(q_list[i], comparison_q, rej_factor):
             # want to keep! save the index!
             indices_to_keep.append(i)
         i += 1
@@ -306,11 +292,26 @@ def reject_quaternion_outliers(q_list, comparison_q, rej_factor):
 
 
 def approximately_pos(pos_1, compare_v, acceptable_range):
+    """
+    Determines if pos_1 is approximately equal to compare_v
+    param pos_1: [x,y,z] position
+    param compare_v: position we compare against
+    param acceptable_range: range that is acceptable
+    returns: 1 if approximately equal, 0 otherwise
+    """
     return np.abs(pos_1[0] - compare_v[0]) < acceptable_range and np.abs(
         pos_1[1] - compare_v[1]) < acceptable_range and np.abs(pos_1[2] - compare_v[2]) < acceptable_range
 
 
 def reject_position_outliers(t_list, comparison_t, rej_factor):
+    """
+    Takes in a list of positions and removes positions that are more than
+    the rej_factor from the comparison position
+    param t_list: list of positions
+    param comparison_t: position we compare against
+    param rej_factor: rej_factor (similarity from 0 to 1)
+    returns: list of position with outliers removed
+    """
     indices_to_keep = []
     t_list = np.array(t_list)
     i = 0
@@ -477,25 +478,6 @@ class HeadTracker:
 
             t2 = time.time()
             q_list = np.array(q_list)
-
-            # # testing###
-            # # publishes tf for every marker
-            # i = 0
-            # while i < len(t_list):
-            #     pose2 = geometry_msgs.msg.PoseStamped()
-            #     header2 = HeaderMsg()
-            #     header2.frame_id = self.parent_link
-            #     header2.stamp = rospy.Time.now()
-            #     pose2.header = header2
-            #     pose2.pose.position.x = t_list[i][0]
-            #     pose2.pose.position.y = t_list[i][1]
-            #     pose2.pose.position.z = t_list[i][2]
-            #     pose2.pose.orientation.x = q_list[i][0]
-            #     pose2.pose.orientation.y = q_list[i][1]
-            #     pose2.pose.orientation.z = q_list[i][2]
-            #     pose2.pose.orientation.w = q_list[i][3]
-            #     self.publish(pose2, "test" + str(i))
-            #     i += 1
 
             # average orientation and position of all currently viewable markers
             t3 = time.time()
