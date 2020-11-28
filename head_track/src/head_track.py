@@ -383,6 +383,9 @@ class HeadTracker:
         self.prev_q2 = def_quat
         self.outPose = geometry_msgs.msg.PoseStamped()
 
+        self.br = tf.TransformBroadcaster()
+        self.listener = tf.TransformListener()
+
     def callback(self, raw_frame):
         t_total_first = time.time()
         # capture video camera frame
@@ -405,6 +408,7 @@ class HeadTracker:
         # if markers were found
         if ids is not None:
             # loop through markers
+
             for i in range(0, len(ids)):
                 rvec, tvec, marker_points = cv2.aruco.estimatePoseSingleMarkers(corners[i], self.marker_size,
                                                                                 self.camera_matrix,
@@ -422,6 +426,30 @@ class HeadTracker:
                 # !!!
                 move_cm = -0.175 / 4
                 tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
+
+                # This method still leads to inaccuracies - I believe the root cause has to do with
+                #  the quality of the aruco tracking and not necessarily my code. For now I've opted
+                #  to stick with my original method because it is simpler to understand, less
+                #  computationally intense and it doesn't require creating many unnecessary new tf frames
+                # # move along axis using tf
+                # temp_q1 = q
+                # temp_t1 = tvec
+                # self.br.sendTransform(temp_t1, temp_q1, rospy.Time.now(), "/temp2", self.parent_link)
+                # # q_rot = [ 0, 0, 0.7071068, 0.7071068 ]
+                # temp_q2 = [0,0,0,1]
+                # temp_t2 = [0,0,-0.175/2]
+                # q = mul_quaternion(temp_q2, temp_q1)
+                # self.br.sendTransform(temp_t2, temp_q2, rospy.Time.now(), "/temp3", "/temp2")
+                # try:
+                #     (trans, rot) = self.listener.lookupTransform(self.parent_link, '/temp3', rospy.Time(0))
+                #     tvec = trans
+                #     q = rot
+                # except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+                #     print "---Couldn't lookup transform---"
+                #     move_cm = -0.175 / 4
+                #     tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
+                # # end move along axis using tf
+
                 if current_id == self.id_back:
                     # adjust angle 90 degrees ccw
                     # # q_rot = [0, 0.7071068, 0, 0.7071068]
@@ -478,6 +506,14 @@ class HeadTracker:
 
             t2 = time.time()
             q_list = np.array(q_list)
+
+            # # publishing tf frames for all markers
+            # i = 0
+            # while i < len(t_list):
+            #     name = "mark" + str(i)
+            #     self.br.sendTransform(t_list[i], q_list[i], rospy.Time.now(), name, self.parent_link)
+            #     i += 1
+
 
             # average orientation and position of all currently viewable markers
             t3 = time.time()
@@ -631,20 +667,19 @@ class HeadTracker:
         q[2] = pose.pose.orientation.z
         q[3] = pose.pose.orientation.w
 
-        br = tf.TransformBroadcaster()
         #br.sendTransform(t, q, rospy.Time.now(), "/tracking_markers", self.parent_link)
-        br.sendTransform(t, q, rospy.Time.now(), name, self.parent_link)
+        self.br.sendTransform(t, q, rospy.Time.now(), name, self.parent_link)
 
         # move ray down to shoot from user's eye-line
         # move down x cm and forward x cm
         t = [self.eye_depth, 0, self.eye_height]
         q = [0, 0, 0, 1]
-        br.sendTransform(t, q, rospy.Time.now(), "/laser_origin", "/tracking_markers")
+        self.br.sendTransform(t, q, rospy.Time.now(), "/laser_origin", "/tracking_markers")
         q_rot = [0.5, 0.5, 0.5, 0.5]
         # q = mul_quaternion(q, q_rot)
         # q_rot = [-0.9961947, -0.0871557, 0, 0]
         q = mul_quaternion(q, q_rot)
-        br.sendTransform(t, q, rospy.Time.now(), "/usb_cam", "/tracking_markers")
+        self.br.sendTransform(t, q, rospy.Time.now(), "/usb_cam", "/tracking_markers")
 
 
 def head_track():
@@ -680,7 +715,7 @@ def head_track():
     # the less the users moves their head the less annoying the 'lag' will be
     # and having smooth stable position is important if we are using that as a basis
     # for the eye-tracking
-    n_previous_marker = 7  # minimum 1
+    n_previous_marker = 20  # minimum 1
 
     # Create object
     HT = HeadTracker(marker_size, camera_matrix, camera_distortion, parent_link, eye_height, eye_depth, image_topic,
