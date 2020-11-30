@@ -2,6 +2,7 @@
 # python
 import time
 import copy
+import wx
 
 # ros
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
@@ -386,6 +387,80 @@ class HeadTracker:
         self.br = tf.TransformBroadcaster()
         self.listener = tf.TransformListener()
 
+        self.publish_identifier = 0
+
+        def onButton0(event): self.publish_identifier = 0
+        def onButton1(event): self.publish_identifier = 1
+        def onButton2(event): self.publish_identifier = 2
+        def onButton3(event): self.publish_identifier = 3
+        def onButton4(event): self.publish_identifier = 4
+        def onButton5(event): self.publish_identifier = 5
+        def onButton6(event): self.publish_identifier = 6
+        def onButton7(event): self.publish_identifier = 7
+
+        app = wx.App()
+        frame = wx.Frame(None, -1, 'win.py')
+        frame.SetDimensions(0,0,350,480)
+
+        panel = wx.Panel(frame, wx.ID_ANY)
+        button0 = wx.Button(panel, wx.ID_ANY, 'Publish None', (10,10))
+        button0.Bind(wx.EVT_BUTTON, onButton0)
+        button1 = wx.Button(panel, wx.ID_ANY, 'Publish Raw', (10, 40))
+        button1.Bind(wx.EVT_BUTTON, onButton1)
+        button2 = wx.Button(panel, wx.ID_ANY, 'Publish After Alignment', (10, 70))
+        button2.Bind(wx.EVT_BUTTON, onButton2)
+        button3 = wx.Button(panel, wx.ID_ANY, 'Publish After Outlier Removal', (10, 100))
+        button3.Bind(wx.EVT_BUTTON, onButton3)
+        button6 = wx.Button(panel, wx.ID_ANY, 'Publish Average Of Current Markers', (10, 130))
+        button6.Bind(wx.EVT_BUTTON, onButton6)
+        button4 = wx.Button(panel, wx.ID_ANY, 'Publish Previous Markers', (10, 160))
+        button4.Bind(wx.EVT_BUTTON, onButton4)
+        button5 = wx.Button(panel, wx.ID_ANY, 'Publish Previous Markers After Outlier Removal', (10, 190))
+        button5.Bind(wx.EVT_BUTTON, onButton5)
+        labelName = 'Publish Average of Previous ' + str(n_avg_previous_marker) + ' Markers'
+        button7 = wx.Button(panel, wx.ID_ANY, labelName, (10, 220))
+        button7.Bind(wx.EVT_BUTTON, onButton7)
+
+        self.currentMarkers_q_threshold = 0.99
+        self.currentMarkers_t_threshold = 0.03
+        self.previousMarkers_q_threshold = 0.90
+        self.previousMarkers_t_threshold = 0.01
+
+        # sliders
+        def onSlide1(event): self.currentMarkers_q_threshold = curQSlid.GetValue() / 1000.0
+        def onSlide2(event): self.currentMarkers_t_threshold = curTSlid.GetValue() / 1000.0
+        def onSlide3(event): self.previousMarkers_q_threshold = prevQSlid.GetValue() / 1000.0
+        def onSlide4(event): self.previousMarkers_t_threshold = prevTSlid.GetValue() / 1000.0
+
+        curQSlid = wx.Slider(panel, wx.ID_ANY, 990, 0, 1000, (10, 260), (200, 50),style=wx.SL_HORIZONTAL|wx.SL_LABELS)
+        curQSlid.Bind(wx.EVT_SLIDER, onSlide1)
+        curTSlid = wx.Slider(panel, wx.ID_ANY, 30, 0, 100, (10, 300), (200, 50), style=wx.SL_HORIZONTAL | wx.SL_LABELS)
+        curTSlid.Bind(wx.EVT_SLIDER, onSlide2)
+        prevQSlid = wx.Slider(panel, wx.ID_ANY, 900, 0, 1000, (10, 340), (200, 50), style=wx.SL_HORIZONTAL | wx.SL_LABELS)
+        prevQSlid.Bind(wx.EVT_SLIDER, onSlide3)
+        prevTSlid = wx.Slider(panel, wx.ID_ANY, 10, 0, 100, (10, 380), (200, 50), style=wx.SL_HORIZONTAL | wx.SL_LABELS)
+        prevTSlid.Bind(wx.EVT_SLIDER, onSlide4)
+
+        def onSlide5(event):
+            self.n_avg_previous_marker = nAvgSlid.GetValue()
+            self.marker_pos_arr = []
+            self.marker_orient_arr = []
+            i = 0
+            while i < self.n_avg_previous_marker:
+                self.marker_orient_arr.insert(i, def_quat)
+                i += 1
+            i = 0
+            while i < self.n_avg_previous_marker:
+                self.marker_pos_arr.insert(i, def_position)
+                i += 1
+
+        nAvgSlid = wx.Slider(panel, wx.ID_ANY, 20, 1, 50, (10, 420), (200, 50), style=wx.SL_HORIZONTAL | wx.SL_LABELS)
+        nAvgSlid.Bind(wx.EVT_SLIDER, onSlide5)
+
+        frame.Show()
+        frame.Centre()
+        app.MainLoop()
+
     def callback(self, raw_frame):
         t_total_first = time.time()
         # capture video camera frame
@@ -422,6 +497,12 @@ class HeadTracker:
                 current_id = ids[i]
                 q = aa2quat((rvec[0][0]))
                 tvec = tvec[0][0]
+
+                # publish marker as transform as they come out raw
+                if self.publish_identifier == 1:
+                    name = "mark" + str(i)
+                    self.br.sendTransform(tvec, q, rospy.Time.now(), name, self.parent_link)
+
                 # tvec = [tvec[0] / 10, tvec[1] / 10, tvec[2] / 10]
                 # !!!
                 move_cm = -0.175 / 4
@@ -507,13 +588,13 @@ class HeadTracker:
             t2 = time.time()
             q_list = np.array(q_list)
 
-            # # publishing tf frames for all markers
-            # i = 0
-            # while i < len(t_list):
-            #     name = "mark" + str(i)
-            #     self.br.sendTransform(t_list[i], q_list[i], rospy.Time.now(), name, self.parent_link)
-            #     i += 1
-
+            # # publishing tf frames for all markers after alignment
+            if self.publish_identifier == 2:
+                i = 0
+                while i < len(t_list):
+                    name = "mark" + str(i)
+                    self.br.sendTransform(t_list[i], q_list[i], rospy.Time.now(), name, self.parent_link)
+                    i += 1
 
             # average orientation and position of all currently viewable markers
             t3 = time.time()
@@ -521,7 +602,7 @@ class HeadTracker:
                 # [1a] remove outliers by
                 # comparing list to specified quaternion
                 # return list
-                q_list = reject_quaternion_outliers(q_list, q_average(q_list), 0.99)
+                q_list = reject_quaternion_outliers(q_list, q_average(q_list), self.currentMarkers_q_threshold)
 
                 # [1b] if all list items are removed
                 # handle it
@@ -541,7 +622,7 @@ class HeadTracker:
                 # returns list
                 t_list = np.array(t_list)
                 avg_xyz = [np.average(t_list[:, 0]), np.average(t_list[:, 1]), np.average(t_list[:, 2])]
-                t_list = reject_position_outliers(t_list, avg_xyz, 0.03)
+                t_list = reject_position_outliers(t_list, avg_xyz, self.currentMarkers_t_threshold)
 
                 # [1b] if all list items are removed
                 # handle it
@@ -555,6 +636,35 @@ class HeadTracker:
                     tvec = [np.average(t_list[:, 0]), np.average(t_list[:, 1]), np.average(t_list[:, 2])]
             t4 = time.time()
 
+            # publish tf frames for all current markers after filtering
+            if self.publish_identifier == 3:
+                i = 0
+                while i < len(t_list):
+                    name = "mark" + str(i)
+                    self.br.sendTransform(t_list[i], q_list[i], rospy.Time.now(), name, self.parent_link)
+                    i += 1
+
+            # publish tf frame for all current markers averaged
+            if self.publish_identifier == 6:
+                name = "mark0"
+                self.br.sendTransform(tvec, q, rospy.Time.now(), name, self.parent_link)
+
+            # publish tf frames for previous x markers before filtering
+            if self.publish_identifier == 4:
+                special_q_list = copy.deepcopy(self.marker_orient_arr)
+                special_q_list.append(copy.deepcopy(q))
+                special_q_list.pop(0)
+                special_q_list = np.array(special_q_list)
+                special_t_list = copy.deepcopy(self.marker_pos_arr)
+                special_t_list.append(copy.deepcopy(tvec))
+                special_t_list.pop(0)
+                special_q_list = np.array(special_q_list)
+                i = 0
+                while i < len(special_t_list):
+                    name = "mark" + str(i)
+                    self.br.sendTransform(special_t_list[i], special_q_list[i], rospy.Time.now(), name, self.parent_link)
+                    i += 1
+
             # average orientation and position of previous x markers
             t9 = time.time()
             if self.n_avg_previous_marker > 1:
@@ -567,7 +677,7 @@ class HeadTracker:
                 # comparing list to most recent item on list
                 q_list = np.array(self.marker_orient_arr)
                 q_list = reject_quaternion_outliers(q_list, self.marker_orient_arr[self.n_avg_previous_marker - 1],
-                                                    0.90)
+                                                    self.previousMarkers_q_threshold)
 
                 # [2b] if all list items are removed
                 # handle it
@@ -593,7 +703,7 @@ class HeadTracker:
                 t_list = np.array(self.marker_pos_arr)
                 t_list_copy = t_list
                 avg_xyz = [np.average(t_list[:, 0]), np.average(t_list[:, 1]), np.average(t_list[:, 2])]
-                t_list = reject_position_outliers(t_list, avg_xyz, 0.01)
+                t_list = reject_position_outliers(t_list, avg_xyz, self.previousMarkers_t_threshold)
 
                 # [2b] if all list items are removed
                 # handle it
@@ -606,6 +716,19 @@ class HeadTracker:
                     # [3] find the average position between
                     # remaining values via averaging x's, y's, and z's
                     tvec = [np.average(t_list[:, 0]), np.average(t_list[:, 1]), np.average(t_list[:, 2])]
+
+            # publish tf frames for previous x markers after filtering
+            if self.publish_identifier == 5:
+                i = 0
+                while i < len(t_list):
+                    name = "mark" + str(i)
+                    self.br.sendTransform(t_list[i], q_list[i], rospy.Time.now(), name, self.parent_link)
+                    i += 1
+
+            # publish tf frame for all previous markers averaged
+            if self.publish_identifier == 7:
+                name = "mark0"
+                self.br.sendTransform(tvec, q, rospy.Time.now(), name, self.parent_link)
             t10 = time.time()
 
             # rotate 90 so z is up
