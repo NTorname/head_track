@@ -352,14 +352,11 @@ class HeadTracker:
         self.marker_size = marker_size
 
         # Aruco tag id's
-        self.id_back = 19
-        self.id_back_R = 5
-        self.id_back_L = 17
-        self.id_right = 1
-        self.id_front_R = 4
-        self.id_front = 16
-        self.id_front_L = 18
-        self.id_left = 10
+        self.id_top = 17
+        self.id_back = 18
+        self.id_right = 10
+        self.id_front = 4
+        self.id_left = 19
 
         self.last_q = [0, 0, 0, 1]
         self.last_t = [0, 0, 0]
@@ -505,69 +502,39 @@ class HeadTracker:
 
                 # tvec = [tvec[0] / 10, tvec[1] / 10, tvec[2] / 10]
                 # !!!
-                move_cm = -0.175 / 4
-                tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
-
-                # This method still leads to inaccuracies - I believe the root cause has to do with
-                #  the quality of the aruco tracking and not necessarily my code. For now I've opted
-                #  to stick with my original method because it is simpler to understand, less
-                #  computationally intense and it doesn't require creating many unnecessary new tf frames
-                # # move along axis using tf
-                # temp_q1 = q
-                # temp_t1 = tvec
-                # self.br.sendTransform(temp_t1, temp_q1, rospy.Time.now(), "/temp2", self.parent_link)
-                # # q_rot = [ 0, 0, 0.7071068, 0.7071068 ]
-                # temp_q2 = [0,0,0,1]
-                # temp_t2 = [0,0,-0.175/2]
-                # q = mul_quaternion(temp_q2, temp_q1)
-                # self.br.sendTransform(temp_t2, temp_q2, rospy.Time.now(), "/temp3", "/temp2")
-                # try:
-                #     (trans, rot) = self.listener.lookupTransform(self.parent_link, '/temp3', rospy.Time(0))
-                #     tvec = trans
-                #     q = rot
-                # except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
-                #     print "---Couldn't lookup transform---"
-                #     move_cm = -0.175 / 4
-                #     tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
-                # # end move along axis using tf
+                move_cm = -0.03
 
                 if current_id == self.id_back:
+                    tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
                     # adjust angle 90 degrees ccw
                     # # q_rot = [0, 0.7071068, 0, 0.7071068]
                     q_rot = aa2quatSam([0, 1, 0, -np.pi / 2])
                     q = mul_quaternion(q, q_rot)
                     q_rot = aa2quatSam([1, 0, 0, 0])
                     q = mul_quaternion(q, q_rot)
-                elif current_id == self.id_back_R:
-                    # adjust angle 45 degrees ccw
-                    q_rot = [0.9238795, 0, 0.3826834, 0]
-                    q = mul_quaternion(q, q_rot)
                 elif current_id == self.id_right:
+                    tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
                     # do nothing
                     pass
                     # angle is good
-                elif current_id == self.id_front_R:
-                    # angle rotate 45 degrees cw
-                    q_rot = [0.9238795, 0, -0.3826834, 0]  # q_rot = [0, 0.3826834, 0, 0.9238795]
-                    q = mul_quaternion(q, q_rot)
                 elif current_id == self.id_front:
+                    tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
                     # adjust angle 90 degrees cw
                     # # q_rot = [0.7071068, 0, -0.7071068, 0]
                     q_rot = aa2quatSam([0, 1, 0, np.pi / 2])
                     q = mul_quaternion(q, q_rot)
                     q_rot = aa2quatSam([1, 0, 0, 0])
                     q = mul_quaternion(q, q_rot)
-                elif current_id == self.id_front_L:
-                    # angle rotate 135 degrees cw
-                    q_rot = [0.3826834, 0, -0.9238795, 0]
-                    q = mul_quaternion(q, q_rot)
                 elif current_id == self.id_left:
+                    tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
                     # angle rotate 180 degrees cw
                     q_rot = [0, 0, 1, 0]
                     q = mul_quaternion(q, q_rot)
-                elif current_id == self.id_back_L:
-                    # angle rotate 135 degrees ccw
-                    q_rot = [0.3826834, 0, 0.9238795, 0]
+                elif current_id == self.id_top:
+                    tvec = move_xyz_along_axis(tvec, q, "z", move_cm)
+                    q_rot = aa2quatSam([0, 0, 1, -np.pi / 2])
+                    q = mul_quaternion(q, q_rot)
+                    q_rot = aa2quatSam([1,0,0, np.pi / 2])
                     q = mul_quaternion(q, q_rot)
                 else:
                     # only in here if detected tag that doesn't belong to list
@@ -810,7 +777,7 @@ def head_track():
     #  (oh yeah and multiply it by 10, idk why but it tracks better, i divide distance by 10 later)
     # marker_size
     # marker_size = 0.065   # 1x1
-    marker_size = 0.03 # * 10  # 2x2
+    marker_size = 0.04 # * 10  # 2x2
     # marker_size = 0.02  # 3x3
 
     # get camera calibration
